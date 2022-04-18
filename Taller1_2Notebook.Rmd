@@ -7,17 +7,17 @@ output:
   pdf_document: default
 ---
 
-Se tienen 7 procesos aleatorios relacionados con la respuesta espectrográfica de mestras de azucar a determinandas longitudes de onda de exitación.
+Se tienen 7 procesos aleatorios relacionados con la respuesta espectro gráfica de muestras de azúcar a determinadas longitudes de onda de excitación.
 
-El conjusto de datos representa la información medida durante la espectrografía para 7 longitudes de onda de exitación. Por cada una de estas se registraron las señales del espectro muestreadas en intervalos de 0.5 nm y se tomaron 268 muestras en momentos diferentes. Es decir que cada proceso consta de 268 realizaciones y cada una de estas muestredas con intervalos de 0.5 nm.
+El conjunto de datos representa la información medida durante la espectrografía para 7 longitudes de onda de excitación. Por cada una de estas se registraron las señales del espectro muestreadas en intervalos de 0.5 nm y se tomaron 268 muestras en momentos diferentes. Es decir que cada proceso consta de 268 realizaciones y cada una de estas muestreadas con intervalos de 0.5 nm.
 
-Para el desarrollo de este ejercicio práctico se escoge uno de los procesos y se determinan los estadisticos descriptivos para este. Cabe resaltar que sería posible realizar la estadistica descriptiva sobre todos los 7 procesos al tiempo utilizando las versiones multivariadas de profundidad, pero para los alcances de este taller solo se utilizará la respuesta a una de las 7 longitudes de onda.
+Para el desarrollo de este ejercicio práctico se escoge uno de los procesos y se determinan los estadísticos descriptivos para este. Cabe resaltar que sería posible realizar la estadística descriptiva sobre todos los 7 procesos al tiempo utilizando las versiones multivariadas de profundidad, pero para los alcances de este taller solo se utilizará la respuesta a una de las 7 longitudes de onda.
 
-Se revisa gráficamente la respuesta a cada longitud de onda de exitación para escoger un proceso con "buenas" caráteristicas de suavidad para que el suavizamiento con B-splines funcione adecuadamente. Con respecto a la forman se pueden crear dos grupos de respuestas, el primer grupo se relaciona con respuestas que "prefieren" un solo valor de longitud de onda y gráficamente se puede ver como la amplitud del espectro para algún valor es mucho mayor que el resto de la respuesta, su forma es similar a un $sinc(t)$. El segundo grupo son respuestas donde la amplitud del espectro entre longitudes diferente no cambia de forma significativ, o bien son sería posible decir a simple vista que hay prefrencia sobre alguna longitud de onda en la respuesta.
+Se revisa gráficamente la respuesta a cada longitud de onda de excitación para escoger un proceso con "buenas" características de suavidad para que el suavizamiento con B-splines funcione adecuadamente. Con respecto a la forman se pueden crear dos grupos de respuestas, el primer grupo se relaciona con respuestas que "prefieren" un solo valor de longitud de onda y gráficamente se puede ver como la amplitud del espectro para algún valor es mucho mayor que el resto de la respuesta, su forma es similar a un $sinc(t)$. El segundo grupo son respuestas donde la amplitud del espectro entre longitudes diferente no cambia de forma significativa, o bien son sería posible decir a simple vista que hay preferencia sobre alguna longitud de onda en la respuesta.
 
 El uso de B-splines funciona en ambos grupos de funciones, sin embargo, el primer grupo posee señales saturadas debido a la gran amplitud del espectro en el valor de longitud de onda de preferencia, que posiblemente sobre pasa el rango de detección del instrumento.
 
-Esta saturación crea singularidades en la función que no permiten usar B-spline y obtener buenos resultados, en este caso la saturación provoca puntos donde las derivadas son discontinuas. Por esta razón se deciden utilizar las respuestas en el grupo 2. Como alternativa para el análisis del grupo 1 se puede optar por cambiar la base B-spline por una más adecuada o bien descomponer las señales en curvas con derivadas suaves, esta opción es más complicada pues los intervalos en los que se definen cada una de las partes no necesariamente tienen igual tamaño, ni estan dentro de los mismos valores de longitud de onda.
+Esta saturación crea singularidades en la función que no permiten usar B-spline y obtener buenos resultados, en este caso la saturación provoca puntos donde las derivadas son discontinuas. Por esta razón se deciden utilizar las respuestas en el grupo 2. Como alternativa para el análisis del grupo 1 se puede optar por cambiar la base B-spline por una más adecuada o bien descomponer las señales en curvas con derivadas suaves, esta opción es más complicada pues los intervalos en los que se definen cada una de las partes no necesariamente tienen igual tamaño, ni están dentro de los mismos valores de longitud de onda.
 
 ```{r echo=FALSE, message=FALSE, warning=FALSE, include=FALSE, paged.print=FALSE}
 library(fda)
@@ -26,7 +26,6 @@ library(MASS)
 library(pspline)
 library(mgcv)
 library(R.matlab)
-library(tidyverse)
 library(data.table)
 library(deSolve)
 library("fda.usc")
@@ -35,10 +34,11 @@ require(reshape2)
 library(fields)
 library(akima)
 library(mrfDepth)
+library(tidyverse)
 ```
 
 ```{r}
-sugar <- readMat("~/Documents/FDA/R/Taller 1/sugar_Process/data.mat")
+sugar <- readMat("data.mat")
 ```
 
 ```{r echo=FALSE}
@@ -77,7 +77,7 @@ long.onda <- 1:571
 long.onda <- as.numeric(long.onda)
 ```
 
-Se selecciona el proceso que corresponde a la longitud de exitación de 305 nm, cambiando el valor de ex_wl se pueden determinar los estadisticos descriptivos para otros procesos, sin embargo, se deben revisar a detalle los resultados verificando que el suavizamiento de las curvas sea aceptable.
+Se selecciona el proceso que corresponde a la longitud de excitación de 305 nm, cambiando el valor de ex_wl se pueden determinar los estadísticos descriptivos para otros procesos, sin embargo, se deben revisar a detalle los resultados verificando que el suavizamiento de las curvas sea aceptable.
 
 ```{r}
 datos = as.matrix(data.frame(SUGAR_db[ex_wl == 305, ] %>% select(1:571), row.names = NULL) )
@@ -87,7 +87,7 @@ datos = as.matrix(data.frame(SUGAR_db[ex_wl == 305, ] %>% select(1:571), row.nam
 sugar.fdata <- t(datos)
 ```
 
-Para que el suavizamiento de todo el proceso se realize bajo el mismo parámetro $\lambda$ se define la función minimo.lambda() que sirve para determinar el valor de lamda que minimiza el promedio del criterio de validación cruzada genralizada entre todas las curvas de la muestra.
+Para que el suavizamiento de todo el proceso se realice bajo el mismo parámetro $\lambda$ se define la función minimo.lambda() que sirve para determinar el valor de $\lambda$ que minimiza el promedio del criterio de validación cruzada generalizada entre todas las curvas de la muestra.
 
 ```{r}
 minimo.lambda <- function(base, datos, tiempo,minimo, maximo, aumento)
@@ -105,7 +105,7 @@ minimo.lambda <- function(base, datos, tiempo,minimo, maximo, aumento)
 }
 ```
 
-Se escogen 3 valores diferentes para la cantidad de knots a utilizar en el suavizamiento, 15 , 20 y 25 y con cada uno de esto se determina el valor de lambda que minimiza el criterio de validación. A continuación se muestra el gráfico del GCV vs $\lambda$ para cada base y el valor del parámetro en el punto mínimimo.
+Se escogen 3 valores diferentes para la cantidad de knots a utilizar en el suavizamiento, 15 , 20 y 25 y con cada uno de esto se determina el valor de lambda que minimiza el criterio de validación. A continuación, se muestra el gráfico del GCV vs $\lambda$ para cada base y el valor del parámetro en el punto mínimo.
 
 ```{r echo=FALSE}
 base.15 <- create.bspline.basis(rangeval = range(long.onda), nbasis = 15, norder = 4)
@@ -151,7 +151,7 @@ ajuste.25 <- smooth.basis(long.onda, sugar.fdata,obs.fdpar.25)
 ajuste.baja <- ajuste.25
 ```
 
-Gráficamente se realiza una comparación de los ajustes para decidir sobre que tan suave es el ajuste y además determinar si este no agrega más suavidad de la real a las curvas. Esta selección se hace bajo criterio personal y permite descartar bases con un número elevado de knots (mayor a 25 knots), pues si bien el error mínimo cuadratico y el GCV pueden parecer más optimos, las gráficas muestran que las curvas suavizadas conservan gran proporción del ruido de las señales originales. Por otra parte se encuentran bases con un número bajo de knots (menos 15 knots) que no solo eliminan el ruido de la señal sino que tambien le quitan su "forma" original. Las siguientes gráficas se utilizan para comparar la forma de las curvas originales con ruido y las curvas suavizadas para 15, 20 y 25 knots.
+Gráficamente se realiza una comparación de los ajustes para decidir sobre qué tan suave es el ajuste y además determinar si este no agrega más suavidad de la real a las curvas. Esta selección se hace bajo criterio personal y permite descartar bases con un número elevado de knots (mayor a 25 knots), pues si bien el error mínimo cuadrático y el GCV pueden parecer óptimos, las gráficas muestran que las curvas suavizadas conservan gran proporción del ruido de las señales originales. Por otra parte, se encuentran bases con un número bajo de knots (menos 15 knots) que no solo eliminan el ruido de la señal, sino que también le quitan su "forma" original. Las siguientes gráficas se utilizan para comparar la forma de las curvas originales con ruido y las curvas suavizadas para 15, 20 y 25 knots.
 
 ##### Ajuste realizado con 15 knots
 
@@ -193,7 +193,7 @@ for(j in 1:267){
 }
 ```
 
-A partir de los gráficos anteriores se decide que, para bases entre 15 y 25 knots, no hay cambios significativos en la "forma" de las curvas ajustadas con relación a la curvas originales. Finalmente se utiliza el criterio GCV y el MSE para verificar cual de estas 3 bases (que conservan la forma y eliminan el ruido) se desempeña mejor. Para esto se realizan boxplot que permiten decidir sobre cual de las bases es mejor en esta aplicación.
+A partir de los gráficos anteriores se decide que, para bases entre 15 y 25 knots, no hay cambios significativos en la "forma" de las curvas ajustadas con relación a las curvas originales. Finalmente se utiliza el criterio GCV y el MSE para verificar cuál de estas 3 bases (que conservan la forma y eliminan el ruido) se desempeña mejor. Para esto se realizan boxplot que permiten decidir sobre cuál de las bases es mejor en esta aplicación.
 
 ```{r echo=FALSE}
 GCV <- data.frame()
@@ -253,7 +253,7 @@ box.plot.mse <- box.plot.mse + labs(x = "", y = "MSE", title = "Comparación MSE
 box.plot.mse 
 ```
 
-Los boxplot anteriores permiten notar, que a pesar de no haber un cambio seignificativo en la forma de las curvas, si existe un cambio notable entre la base con 25 knots y las otras 2 en cuanto al MSE y el GCV. Por esta razón se decide utilizar la base B-spline con 25 knots y un valor de $\lambda$ igual a 154.8.
+Los boxplot anteriores permiten notar, que a pesar de no haber un cambio significativo en la forma de las curvas, si existe un cambio notable entre la base con 25 knots y las otras 2 en cuanto al MSE y el GCV. Por esta razón se decide utilizar la base B-spline con 25 knots y un valor de $\lambda$ igual a 154.8.
 
 ### Boxplot funcional
 
@@ -268,7 +268,7 @@ box.baja.diff1 <- boxplot(deriv.fd(as.fd(ajuste.baja),2), method = "MBD", color 
                           , main = expression(" Boxplot Funcional para la primera derivada(MBD)"))
 ```
 
-Con las funciones suavizadas se obtienen 2 outlier con el método de profundidad por bandas y a estas se le agregan 4 outlier más obtenidos con el mismo método pero a partir de las derivadas de primer orden. Acontinuación se muestra el index en el conjunto de datos de la curva mediana y de los outliers.
+Con las funciones suavizadas se obtienen 2 outlier con el método de profundidad por bandas y a estas se le agregan 4 outlier más obtenidos con el mismo método, pero a partir de las derivadas de primer orden. A continuación, se muestra el índex en el conjunto de datos de la curva mediana y de los outliers.
 
 ```{r echo=FALSE}
 outliers.baja<- box.baja$outpoint
@@ -279,9 +279,7 @@ out <- c(outliers.baja, outliers.baja2)
 sprintf("Outliers index: %d %d %d %d %d %d, Median Curve index: %d", out[1],out[2],out[3],out[4],out[5],out[6],med)
 ```
 
-En el siguiente gráficos se muestra la curva mediana en color negro, los outlier obtenidos sobre las curvas suavizadas en color rojo, y los outlier obtenidos bajo la primera derivada en color amarillo.
-
-#### Outliers
+En el siguiente gráfico se muestra la curva mediana en color negro, los outlier obtenidos sobre las curvas suavizadas en color rojo, y los outlier obtenidos bajo la primera derivada en color amarillo. #### Outliers
 
 ```{r echo=FALSE}
 curvaMediana <- smooth.basis(long.onda, sugar.fdata[,139],obs.fdpar.25)
@@ -301,9 +299,9 @@ lines(outliers5, col = "yellow")
 lines(outliers6, col ="yellow")
 ```
 
-El boxplot de las cruvas suavizadas permite encontrar outliers relacionados con la amplitud de las cruvas y la profundidad entre estas, por lo tanto considera como outlier las dos curvas con mayor amplitud y que visualmente se pueden distinguir del conjunto de funciones por aparecer en la mayoría del intervalo sin curvas cercanas.
+El boxplot de las curvas suavizadas permite encontrar outliers relacionados con la amplitud de las curvas y la profundidad entre estas, por lo tanto, considera como outlier las dos curvas con mayor amplitud y que visualmente se pueden distinguir del conjunto de funciones por aparecer en la mayoría del intervalo sin curvas cercanas.
 
-Los outliers detectados en el boxplot funcional de las derivadas de primer orden, ya no consideran como datos atipicos a funciones que se encuentren separadas del conjunto, sino a quellas funciones que presentan "formas" diferentes en determinado intervalo. Este tipo de curvas outliers son más dificiles de identifcar "a ojo" y se debe tener espcial cuidado con estas pues dependiendo de la naturaleza del proceso, se debe verificar si existen o no razones que justifiquen su aparaición en la muestra para no descartarlas. Para este ejercio solo se observa que los outlier detectados en las derivadas de primer orden tienen en común que para una región alrededor de 500 presentan oscilaciones pronunciadas que aparentemente no están presentes en la mayoría de la muestra y se verifica en el boxplot pues los outlier aparecen es este mismo intervalo.
+Los outliers detectados en el boxplot funcional de las derivadas de primer orden, ya no consideran como datos atípicos a funciones que se encuentren separadas del conjunto, sino aquellas funciones que presentan "formas" diferentes en determinado intervalo. Este tipo de curvas outliers son más difíciles de identificar "a ojo" y se debe tener especial cuidado con estas pues dependiendo de la naturaleza del proceso, se debe verificar si existen o no razones que justifiquen su aparición en la muestra para no descartarlas. Para este ejercicio solo se observa que los outlier detectados en las derivadas de primer orden tienen en común que para una región alrededor de 500 presentan oscilaciones pronunciadas que aparentemente no están presentes en la mayoría de la muestra y se verifica en el boxplot pues los outlier aparecen es este mismo intervalo.
 
 En la siguiente gráfica se muestra el conjunto de curvas con outliers a la izquierda, y a la derecha, el conjunto de curvas luego de descartar los 6 outliers encontrados.
 
@@ -321,9 +319,9 @@ plot(ajuste.baja.sin.outl, ylim = c(0,200), lty = 1, col = "deepskyblue3"
 
 ### Estadistica descriptiva
 
-Para esta parte se utilizan funciones que reciben dtaos de tipo funcional fdata por esto se crea la muestra para el proceso sin los outliers pero como datos funcionales utilizando la función fdata().
+Para esta parte se utilizan funciones que reciben datos de tipo funcional fdata por esto se crea la muestra para el proceso sin los outliers pero como datos funcionales utilizando la función fdata().
 
-Los estadisticos acontinuación se determinaron con funciones de la librería ...., estas se definieron directamente en la implemntación para no cargar la librería completa y son bootstrap que generan varias simulaciones para determininar los estimadores con su región de confianza. El reporte de progreso de los bootstrap se ha comentado para evitar que se visualice en el documento.
+Los estadísticos a continuación se determinaron con funciones de la librería ...., estas se definieron directamente en la implementación para no cargar la librería completa y son Bootstrap que generan varias simulaciones para determinar los estimadores con su región de confianza. El reporte de progreso de los Bootstrap se ha comentado para evitar que se visualice en el documento.
 
 ```{r echo=FALSE}
 datos.baja.usc <- fdata(mdata = t(sugar.fdata[][,-c(outliers.baja, outliers.baja2)])
