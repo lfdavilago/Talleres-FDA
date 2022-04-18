@@ -1,0 +1,754 @@
+---
+title: 'Taller 1.2: Estadistica descriptiva'
+output:
+  html_document:
+    df_print: paged
+  html_notebook: default
+  pdf_document: default
+---
+
+Se tienen 7 procesos aleatorios relacionados con la respuesta espectrográfica de mestras de azucar a determinandas longitudes de onda de exitación.
+
+El conjusto de datos representa la información medida durante la espectrografía para 7 longitudes de onda de exitación. Por cada una de estas se registraron las señales del espectro muestreadas en intervalos de 0.5 nm y se tomaron 268 muestras en momentos diferentes. Es decir que cada proceso consta de 268 realizaciones y cada una de estas muestredas con intervalos de 0.5 nm.
+
+Para el desarrollo de este ejercicio práctico se escoge uno de los procesos y se determinan los estadisticos descriptivos para este. Cabe resaltar que sería posible realizar la estadistica descriptiva sobre todos los 7 procesos al tiempo utilizando las versiones multivariadas de profundidad, pero para los alcances de este taller solo se utilizará la respuesta a una de las 7 longitudes de onda.
+
+Se revisa gráficamente la respuesta a cada longitud de onda de exitación para escoger un proceso con "buenas" caráteristicas de suavidad para que el suavizamiento con B-splines funcione adecuadamente. Con respecto a la forman se pueden crear dos grupos de respuestas, el primer grupo se relaciona con respuestas que "prefieren" un solo valor de longitud de onda y gráficamente se puede ver como la amplitud del espectro para algún valor es mucho mayor que el resto de la respuesta, su forma es similar a un $sinc(t)$. El segundo grupo son respuestas donde la amplitud del espectro entre longitudes diferente no cambia de forma significativ, o bien son sería posible decir a simple vista que hay prefrencia sobre alguna longitud de onda en la respuesta.
+
+El uso de B-splines funciona en ambos grupos de funciones, sin embargo, el primer grupo posee señales saturadas debido a la gran amplitud del espectro en el valor de longitud de onda de preferencia, que posiblemente sobre pasa el rango de detección del instrumento.
+
+Esta saturación crea singularidades en la función que no permiten usar B-spline y obtener buenos resultados, en este caso la saturación provoca puntos donde las derivadas son discontinuas. Por esta razón se deciden utilizar las respuestas en el grupo 2. Como alternativa para el análisis del grupo 1 se puede optar por cambiar la base B-spline por una más adecuada o bien descomponer las señales en curvas con derivadas suaves, esta opción es más complicada pues los intervalos en los que se definen cada una de las partes no necesariamente tienen igual tamaño, ni estan dentro de los mismos valores de longitud de onda.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, include=FALSE, paged.print=FALSE}
+library(fda)
+library(VGAM)
+library(MASS)
+library(pspline)
+library(mgcv)
+library(R.matlab)
+library(tidyverse)
+library(data.table)
+library(deSolve)
+library("fda.usc")
+library(ggplot2)
+require(reshape2)
+library(fields)
+library(akima)
+library(mrfDepth)
+```
+
+```{r}
+sugar <- readMat("~/Documents/FDA/R/Taller 1/sugar_Process/data.mat")
+```
+
+```{r echo=FALSE}
+ex_wl = c(230, 240, 255, 290, 305, 325, 340)
+longitud = c(571, 1142, 1713, 2284, 2855, 3426, 3997)
+
+sugar_X = sugar$X %>% as.data.table() 
+
+base_571  = sugar_X %>% select(1:571) %>% mutate(ex_wl = 230)
+base_1142 = sugar_X %>% select(572: 1142) %>% mutate(ex_wl = 240)
+colnames(base_1142) = colnames(base_571)
+
+base_1713 = sugar_X %>% select(1143: 1713) %>% mutate(ex_wl = 255)
+colnames(base_1713) = colnames(base_571)
+
+base_2284 = sugar_X %>% select(1714: 2284) %>% mutate(ex_wl = 290)
+colnames(base_2284) = colnames(base_571)
+
+base_2855 = sugar_X %>% select(2285: 2855) %>% mutate(ex_wl = 305)
+colnames(base_2855) = colnames(base_571)
+
+base_3426 = sugar_X %>% select(2856: 3426) %>% mutate(ex_wl = 325)
+colnames(base_3426) = colnames(base_571)
+
+base_3997 = sugar_X %>% select(3427: 3997) %>% mutate(ex_wl = 340)
+colnames(base_3997) = colnames(base_571)
+
+SUGAR = Reduce(bind_rows, list(base_571, base_1142, base_1713, base_2284, base_2855, base_3426, base_3997)) %>% 
+  as.data.table() %>% melt.data.table(., id.vars = c('ex_wl'), variable.name = "wavelengths", value.name = "valor")
+
+SUGAR_db = Reduce(bind_rows, list(base_571, base_1142, base_1713, base_2284, base_2855, base_3426, base_3997))
+
+rm(base_571, base_1142, base_1713, base_2284, base_2855, base_3426, base_3997, sugar_X)
+
+long.onda <- 1:571
+long.onda <- as.numeric(long.onda)
+```
+
+Se selecciona el proceso que corresponde a la longitud de exitación de 305 nm, cambiando el valor de ex_wl se pueden determinar los estadisticos descriptivos para otros procesos, sin embargo, se deben revisar a detalle los resultados verificando que el suavizamiento de las curvas sea aceptable.
+
+```{r}
+datos = as.matrix(data.frame(SUGAR_db[ex_wl == 305, ] %>% select(1:571), row.names = NULL) )
+```
+
+```{r echo=FALSE}
+sugar.fdata <- t(datos)
+```
+
+Para que el suavizamiento de todo el proceso se realize bajo el mismo parámetro $\lambda$ se define la función minimo.lambda() que sirve para determinar el valor de lamda que minimiza el promedio del criterio de validación cruzada genralizada entre todas las curvas de la muestra.
+
+```{r}
+minimo.lambda <- function(base, datos, tiempo,minimo, maximo, aumento)
+{ 
+  vector.lambda <- seq(minimo,maximo,aumento)
+  vector.media.gcv <- rep(NA,length(vector.lambda))
+  for(i in 1:length(vector.lambda))
+  {
+    prueba.fdpar <- fdPar(fdobj = base, Lfdobj = 2, lambda = vector.lambda[i])
+    ajuste.prueba <- smooth.basis(tiempo, datos, prueba.fdpar)
+    vector.media.gcv[i] <- mean(ajuste.prueba$gcv)
+  }
+  names(vector.media.gcv) <- as.character(vector.lambda)
+  return(vector.media.gcv)
+}
+```
+
+Se escogen 3 valores diferentes para la cantidad de knots a utilizar en el suavizamiento, 15 , 20 y 25 y con cada uno de esto se determina el valor de lambda que minimiza el criterio de validación. A continuación se muestra el gráfico del GCV vs $\lambda$ para cada base y el valor del parámetro en el punto mínimimo.
+
+```{r echo=FALSE}
+base.15 <- create.bspline.basis(rangeval = range(long.onda), nbasis = 15, norder = 4)
+base.20 <- create.bspline.basis(rangeval = range(long.onda), nbasis = 20, norder = 4)
+base.25 <- create.bspline.basis(rangeval = range(long.onda), nbasis = 25, norder = 4)
+
+secuencia.lambda.15 <- minimo.lambda(base = base.15, datos = sugar.fdata, tiempo = long.onda,minimo = 0,
+                                     maximo = 200, aumento = 0.1)
+secuencia.lambda.20 <- minimo.lambda(base = base.20, datos = sugar.fdata, tiempo = long.onda,minimo = 0,
+                                     maximo = 200, aumento = 0.1)
+secuencia.lambda.25 <- minimo.lambda(base = base.25, datos = sugar.fdata, tiempo = long.onda,minimo = 0,
+                                     maximo = 200, aumento = 0.1)
+
+lambda.15 <- as.numeric(names(which.min(secuencia.lambda.15)))
+lambda.20 <- as.numeric(names(which.min(secuencia.lambda.20)))
+lambda.25 <- as.numeric(names(which.min(secuencia.lambda.25)))
+
+sprintf("Lambda 12 %f, Lambda 20 = %f, Lambda 25 = %f", lambda.15, lambda.20, lambda.25)
+```
+
+```{r echo=FALSE}
+par(mfrow = c(1,3))
+plot(seq(0,200,0.1), secuencia.lambda.15, type = "l", xlab = expression(lambda)
+     , ylab = "GCV", main = expression(paste("Valor de ",lambda, " contra GCV - Base 15")))
+
+plot(seq(0,200,0.1), secuencia.lambda.20, type = "l", xlab = expression(lambda)
+     , ylab = "GCV", main = expression(paste("Valor de ",lambda, " contra GCV - Base 20")))
+plot(seq(0,200,0.1), secuencia.lambda.25, type = "l", xlab = expression(lambda)
+     , ylab = "GCV", main = expression(paste("Valor de ",lambda, " contra GCV - Base 25")))
+```
+
+```{r echo=FALSE}
+obs.fdpar.15 <- fdPar(fdobj = base.15,Lfdobj = 2, lambda = lambda.15)
+obs.fdpar.20 <- fdPar(fdobj = base.20,Lfdobj = 2, lambda = lambda.20)
+obs.fdpar.25 <- fdPar(fdobj = base.25,Lfdobj = 2, lambda = lambda.25)
+
+
+
+ajuste.15 <- smooth.basis(long.onda, sugar.fdata,obs.fdpar.15)
+ajuste.20 <- smooth.basis(long.onda, sugar.fdata,obs.fdpar.20)
+ajuste.25 <- smooth.basis(long.onda, sugar.fdata,obs.fdpar.25)
+
+ajuste.baja <- ajuste.25
+```
+
+Gráficamente se realiza una comparación de los ajustes para decidir sobre que tan suave es el ajuste y además determinar si este no agrega más suavidad de la real a las curvas. Esta selección se hace bajo criterio personal y permite descartar bases con un número elevado de knots (mayor a 25 knots), pues si bien el error mínimo cuadratico y el GCV pueden parecer más optimos, las gráficas muestran que las curvas suavizadas conservan gran proporción del ruido de las señales originales. Por otra parte se encuentran bases con un número bajo de knots (menos 15 knots) que no solo eliminan el ruido de la señal sino que tambien le quitan su "forma" original. Las siguientes gráficas se utilizan para comparar la forma de las curvas originales con ruido y las curvas suavizadas para 15, 20 y 25 knots.
+
+##### Ajuste realizado con 15 knots
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, paged.print=FALSE}
+par(mfrow = c(1,2))
+plot(ajuste.15,  xlab = "Longitud de Onda(t)", ylab = expression(hat(x)(t)), lty = 1
+     ,  col = "cyan3")
+X <- sugar.fdata
+plot(1:571, type ="l",X[,268], xlab = "Longitud de Onda(t)", ylab = expression(hat(x)(t)), lty = 1
+     , main = expression("Curvas reales"), col = "cyan3", ylim = c(0,200))
+for(j in 1:267){
+  lines(1:571, X[,j])
+}
+```
+
+##### Ajuste realizado con 20 knots
+
+```{r echo=FALSE}
+par(mfrow = c(1,2))
+plot(ajuste.20,  xlab = "Longitud de Onda(t)", ylab = expression(hat(x)(t)), lty = 1
+     , main = expression("     Curvas Suavizadas 20 knots"), col = "cyan3")
+plot(1:571, type ="l",X[,268], xlab = "Longitud de Onda(t)", ylab = expression(hat(x)(t)), lty = 1
+     , main = expression("Curvas reales"), col = "cyan3", ylim = c(0,200))
+for(j in 1:267){
+  lines(1:571, X[,j])
+}
+```
+
+##### Ajuste realizado con 25 knots
+
+```{r echo=FALSE}
+par(mfrow = c(1,2))
+plot(ajuste.baja,  xlab = "Longitud de Onda(t)", ylab = expression(hat(x)(t)), lty = 1
+     , main = expression("     Curvas Suavizadas 25 knots"), col = "cyan3")
+plot(1:571, type ="l",X[,268], xlab = "Longitud de Onda(t)", ylab = expression(hat(x)(t)), lty = 1
+     , main = expression("Curvas reales"), col = "cyan3", ylim = c(0,200))
+for(j in 1:267){
+  lines(1:571, X[,j])
+}
+```
+
+A partir de los gráficos anteriores se decide que, para bases entre 15 y 25 knots, no hay cambios significativos en la "forma" de las curvas ajustadas con relación a la curvas originales. Finalmente se utiliza el criterio GCV y el MSE para verificar cual de estas 3 bases (que conservan la forma y eliminan el ruido) se desempeña mejor. Para esto se realizan boxplot que permiten decidir sobre cual de las bases es mejor en esta aplicación.
+
+```{r echo=FALSE}
+GCV <- data.frame()
+
+GCV[1:ncol(sugar.fdata),1] <- "15"
+GCV[(ncol(sugar.fdata)+1):(2*ncol(sugar.fdata)),1] <- "20"
+GCV[((2*ncol(sugar.fdata)) + 1):(3*ncol(sugar.fdata)),1] <- "25"
+GCV[1:ncol(sugar.fdata),2] <- ajuste.15$gcv
+GCV[(ncol(sugar.fdata)+1):(2*ncol(sugar.fdata)),2] <- ajuste.20$gcv
+GCV[((2*ncol(sugar.fdata)) + 1):(3*ncol(sugar.fdata)),2] <- ajuste.25$gcv
+
+names(GCV) <- c("Bases","GCV")
+
+MSE.individual <- function(datos, base, tiempo, lambda.ing)
+{
+  vector <- rep(0,ncol(datos))
+  obs.fdpar <- fdPar(fdobj = base,Lfdobj = 2, lambda = lambda.ing)
+  
+  for(i in 1:length(vector))
+  {
+    ajuste <- smooth.basis(tiempo, datos[,i],obs.fdpar)
+    vector[i] <- ajuste$SSE/nrow(datos)
+  }
+  return(vector)
+}
+
+n <- ncol(sugar.fdata)
+MSE <- data.frame()
+MSE[1:n,1] <- "15"
+MSE[(n+1):(2*n),1] <- "20"
+MSE[((2*n) + 1):(3*n),1] <- "25"
+MSE[1:n,2] <- MSE.individual(datos = sugar.fdata,base = base.15, tiempo = long.onda
+                             , lambda.ing = lambda.15)
+MSE[(n+1):(2*n),2] <- MSE.individual(datos = sugar.fdata,base = base.20, tiempo = long.onda
+                                     , lambda.ing = lambda.20)
+MSE[((2*n) + 1):(3*n),2] <- MSE.individual(datos = sugar.fdata,base = base.25, tiempo = long.onda
+                                           , lambda.ing = lambda.25)
+names(MSE) <- c("Bases","MSE")
+```
+
+```{r echo=FALSE}
+GCV.melt <- melt(GCV, id.var = "Bases")
+
+box.plot.gcv <- ggplot(data = GCV.melt, aes(x = variable, y = value))
+box.plot.gcv <- box.plot.gcv + geom_boxplot(aes(fill = Bases))
+box.plot.gcv <- box.plot.gcv + labs(x = "", y = "GCV", title = "Comparación GCV", fill = "# Bases") +
+  theme(plot.title = element_text(hjust = 0.5)) 
+
+box.plot.gcv
+
+MSE.melt <- melt(MSE, id.var = "Bases")
+
+box.plot.mse <- ggplot(data = MSE.melt, aes(x = variable, y = value))
+box.plot.mse <- box.plot.mse + geom_boxplot(aes(fill = Bases))
+box.plot.mse <- box.plot.mse + labs(x = "", y = "MSE", title = "Comparación MSE", fill = "# Bases") +
+  theme(plot.title = element_text(hjust = 0.5)) 
+box.plot.mse 
+```
+
+Los boxplot anteriores permiten notar, que a pesar de no haber un cambio seignificativo en la forma de las curvas, si existe un cambio notable entre la base con 25 knots y las otras 2 en cuanto al MSE y el GCV. Por esta razón se decide utilizar la base B-spline con 25 knots y un valor de $\lambda$ igual a 154.8.
+
+### Boxplot funcional
+
+El boxplot funcional se realiza sobre las curvas suavizadas con la base B-spline descrita anteriormente. Para esto se usa la función boxplot() de la librería "fda.usc" utilizando el método de profundidad basado en bandas. Adicionalmente se decide utilizar el boxplot funcional de la primera derivada de las curvas para determinar los outliers.
+
+```{r echo=FALSE}
+box.baja <- boxplot(ajuste.baja, method = "MBD", color = "gold", barcol = "orange"
+                    , xlab = "Longitud de Onda (t)", ylab = expression(hat(x)(t))
+                    , main = expression("\n Boxplot Funcional (MBD)"))
+box.baja.diff1 <- boxplot(deriv.fd(as.fd(ajuste.baja),2), method = "MBD", color = "gold", barcol = "orange", xlab = "Longitud de Onda (t)"
+                          , ylab = expression(partialdiff(hat(x)(t)))
+                          , main = expression(" Boxplot Funcional para la primera derivada(MBD)"))
+```
+
+Con las funciones suavizadas se obtienen 2 outlier con el método de profundidad por bandas y a estas se le agregan 4 outlier más obtenidos con el mismo método pero a partir de las derivadas de primer orden. Acontinuación se muestra el index en el conjunto de datos de la curva mediana y de los outliers.
+
+```{r echo=FALSE}
+outliers.baja<- box.baja$outpoint
+med<-box.baja$medcurve
+order<-sort(box.baja$depth)
+outliers.baja2<-box.baja.diff1$outpoint
+out <- c(outliers.baja, outliers.baja2)
+sprintf("Outliers index: %d %d %d %d %d %d, Median Curve index: %d", out[1],out[2],out[3],out[4],out[5],out[6],med)
+```
+
+En el siguiente gráficos se muestra la curva mediana en color negro, los outlier obtenidos sobre las curvas suavizadas en color rojo, y los outlier obtenidos bajo la primera derivada en color amarillo.
+
+#### Outliers
+
+```{r echo=FALSE}
+curvaMediana <- smooth.basis(long.onda, sugar.fdata[,139],obs.fdpar.25)
+outliers1 <- smooth.basis(long.onda, sugar.fdata[,out[1]],obs.fdpar.25)
+outliers2 <- smooth.basis(long.onda, sugar.fdata[,out[2]],obs.fdpar.25)
+outliers3 <- smooth.basis(long.onda, sugar.fdata[,out[3]],obs.fdpar.25)
+outliers4 <- smooth.basis(long.onda, sugar.fdata[,out[4]],obs.fdpar.25)
+outliers5 <- smooth.basis(long.onda, sugar.fdata[,out[5]],obs.fdpar.25)
+outliers6 <- smooth.basis(long.onda, sugar.fdata[,out[6]],obs.fdpar.25)
+plot(curvaMediana,  xlab = "Longitud de Onda(t)", ylab = expression(hat(x)(t)), lty = 1
+     ,  col = "cyan3", ylim = c(0,200))
+lines(outliers1, col = "red")
+lines(outliers2, col ="red")
+lines(outliers3, col = "yellow")
+lines(outliers4, col ="yellow")
+lines(outliers5, col = "yellow")
+lines(outliers6, col ="yellow")
+```
+
+El boxplot de las cruvas suavizadas permite encontrar outliers relacionados con la amplitud de las cruvas y la profundidad entre estas, por lo tanto considera como outlier las dos curvas con mayor amplitud y que visualmente se pueden distinguir del conjunto de funciones por aparecer en la mayoría del intervalo sin curvas cercanas.
+
+Los outliers detectados en el boxplot funcional de las derivadas de primer orden, ya no consideran como datos atipicos a funciones que se encuentren separadas del conjunto, sino a quellas funciones que presentan "formas" diferentes en determinado intervalo. Este tipo de curvas outliers son más dificiles de identifcar "a ojo" y se debe tener espcial cuidado con estas pues dependiendo de la naturaleza del proceso, se debe verificar si existen o no razones que justifiquen su aparaición en la muestra para no descartarlas. Para este ejercio solo se observa que los outlier detectados en las derivadas de primer orden tienen en común que para una región alrededor de 500 presentan oscilaciones pronunciadas que aparentemente no están presentes en la mayoría de la muestra y se verifica en el boxplot pues los outlier aparecen es este mismo intervalo.
+
+En la siguiente gráfica se muestra el conjunto de curvas con outliers a la izquierda, y a la derecha, el conjunto de curvas luego de descartar los 6 outliers encontrados.
+
+#### Datos sin outliers
+
+```{r echo=FALSE}
+ajuste.baja.sin.outl <- smooth.basis(long.onda, sugar.fdata[,-c(outliers.baja,outliers.baja2)], obs.fdpar.25)
+
+par(mfrow = c(1,2))
+plot(ajuste.baja, ylim = c(0,200), lty = 1, col = "deepskyblue3", 
+     main = "Con Outliers", xlab = "Longitud de Onda (t)", ylab = expression(hat(x)(t)))
+plot(ajuste.baja.sin.outl, ylim = c(0,200), lty = 1, col = "deepskyblue3"
+     , main = "Sin Outliers", xlab = "Longitud de Onda (t)", ylab = expression(hat(x)(t)))
+```
+
+### Estadistica descriptiva
+
+Para esta parte se utilizan funciones que reciben dtaos de tipo funcional fdata por esto se crea la muestra para el proceso sin los outliers pero como datos funcionales utilizando la función fdata().
+
+Los estadisticos acontinuación se determinaron con funciones de la librería ...., estas se definieron directamente en la implemntación para no cargar la librería completa y son bootstrap que generan varias simulaciones para determininar los estimadores con su región de confianza. El reporte de progreso de los bootstrap se ha comentado para evitar que se visualice en el documento.
+
+```{r echo=FALSE}
+datos.baja.usc <- fdata(mdata = t(sugar.fdata[][,-c(outliers.baja, outliers.baja2)])
+                        ,rangeval = range(long.onda), argvals = long.onda )
+
+curvas.baja.usc <- datos.baja.usc
+curvas.baja.usc$data <- datos.baja.usc$data %*% S.basis(long.onda,basis = base.25,lambda=lambda.25,Lfdobj=2) 
+plot(curvas.baja.usc, lty = 1, col = "cyan3")
+```
+
+#### Función media
+
+```{r echo=FALSE}
+fdata.bootstrap.mean <- function (fdataobj, statistic = func.mean, alpha = 0.05, nb = 200, 
+                                  smo = 0.01, draw = FALSE, draw.control = NULL,title , ...) {
+  if (!is.fdata(fdataobj)) 
+    fdataobj = fdata(fdataobj)
+  data <- fdataobj[["data"]]
+  estmues <- statistic(fdataobj, ...)
+  nr <- nrow(fdataobj)
+  nc <- ncol(fdataobj)
+  tt = fdataobj[["argvals"]]
+  rtt = fdataobj[["rangeval"]]
+  names = fdataobj[["names"]]
+  distboot <- matrix(NA, nrow = nb)
+  estboot <- matrix(NA, nrow = nb, ncol = nc)
+  #pb = txtProgressBar(min = 0, max = nb, style = 3)
+  for (i in 1:nb) {
+    #setTxtProgressBar(pb, i - 0.5)
+    bmuestra <- fdataobj[sample(1:nr, size = nr, replace = TRUE), 
+    ]
+    if (smo > 0) {
+      bmuestra[["data"]] <- bmuestra[["data"]] + mvrnorm(n = nr, 
+                                                         rep(0, nc), var(data) * smo)
+    }
+    stat <- statistic(bmuestra, ...)
+    estboot[i, ] <- stat[["data"]]
+    #setTxtProgressBar(pb, i)
+  }
+  #close(pb)
+  center <- estmues
+  distboot <- metric.lp(fdata(estboot, tt, rtt), center, ...)
+  dist <- max(distboot[rank(distboot) <= floor((1 - alpha) * 
+                                                 nb)])
+  resample <- fdata(estboot, tt, rtt, names)
+  if (draw) {
+    if (is.null(draw.control)) 
+      draw.control = list(col = c("grey", "blue", "pink"), 
+                          lty = c(2, 1, 1), lwd = c(1, 2, 1))
+    if (is.null(draw.control$lwd)) 
+      draw.control$lwd = c(1, 2, 1)
+    if (is.null(draw.control$lty)) 
+      draw.control$lty = c(2, 1, 1)
+    if (is.null(draw.control$col)) 
+      draw.control$col = c("grey", "blue", "pink")
+    plot(fdataobj, lwd = draw.control$lwd[1], lty = draw.control$lty[1], 
+         col = draw.control$col[1], type = "n", main = title, cex.main = 1
+         ,xlab = "Longitud de Onda (t)", ylab = expression(hat(x)(t)), cex.lab = 0.8)
+    lines(resample[distboot <= dist], lwd = draw.control$lwd[3], 
+          lty = draw.control$lty[3], col = draw.control$col[3])
+    lines(estmues, lwd = draw.control$lwd[2], lty = draw.control$lty[2], 
+          col = draw.control$col[2])
+    legend(x = min(tt), y = 0.99 * max(data), legend = c("Función Media", "Región de Confianza")
+           , lty = draw.control$lty[2:3], 
+           lwd = draw.control$lwd[2:3], col = draw.control$col[2:3], cex = 0.8,inset = c(0.05,0.01),  
+           bty = "n")
+  }
+  return(list(statistic = estmues, dband = dist, rep.dist = distboot, 
+              resample = resample, fdataobj = fdataobj))
+}
+
+
+par(mfrow = c(1,1))
+media.boostrap.bajo <- fdata.bootstrap.mean(curvas.baja.usc, statistic = func.mean, alpha = 0.05, nb = 200
+                                            , draw = T, draw.control = list("col" =  c("gold","green","darkgreen"))
+                                            ,title = "Función Media ",smo = 0.01)
+
+plot(media.boostrap.bajo$statistic
+     , lty = 1, col = "darkorange", ylim = c(min(media.boostrap.bajo$resample)
+                                             ,max(media.boostrap.bajo$resample)), main = "Funciones Media ", xlab = "Longitud de Onda (t)"
+     , ylab = expression(hat(x)(t)), cex.lab = 0.8, cex.main = 1)
+
+legend("topleft", legend = c("F. Media", "F. Media - Alto", "Región de Confianza - Bajo"
+                             ,"Región de Confianza - Alto"), cex = 0.75, lwd = 2
+       , col = c("chartreuse4","gold","cyan3", "darkorange"), inset = c(0.01,0.05), bty = "n")
+```
+
+#### Función media recortada al 10%
+
+```{r echo=FALSE}
+fdata.bootstrap.trimm <- function (fdataobj, statistic = func.mean, alpha = 0.05, nb = 200, 
+                                   smo = 0, draw = FALSE, draw.control = NULL,title ,posicion, ...) {
+  if (!is.fdata(fdataobj)) 
+    fdataobj = fdata(fdataobj)
+  data <- fdataobj[["data"]]
+  estmues <- statistic(fdataobj, ...)
+  nr <- nrow(fdataobj)
+  nc <- ncol(fdataobj)
+  tt = fdataobj[["argvals"]]
+  rtt = fdataobj[["rangeval"]]
+  names = fdataobj[["names"]]
+  distboot <- matrix(NA, nrow = nb)
+  estboot <- matrix(NA, nrow = nb, ncol = nc)
+  #pb = txtProgressBar(min = 0, max = nb, style = 3)
+  for (i in 1:nb) {
+    #setTxtProgressBar(pb, i - 0.5)
+    bmuestra <- fdataobj[sample(1:nr, size = nr, replace = TRUE), 
+    ]
+    if (smo > 0) {
+      bmuestra[["data"]] <- bmuestra[["data"]] + mvrnorm(n = nr, 
+                                                         rep(0, nc), var(data) * smo)
+    }
+    stat <- statistic(bmuestra, ...)
+    estboot[i, ] <- stat[["data"]]
+    #setTxtProgressBar(pb, i)
+  }
+  #close(pb)
+  center <- estmues
+  distboot <- metric.lp(fdata(estboot, tt, rtt), center, ...)
+  dist <- max(distboot[rank(distboot) <= floor((1 - alpha) * nb)])
+  resample <- fdata(estboot, tt, rtt, names)
+  if (draw) {
+    if (is.null(draw.control)) 
+      draw.control = list(col = c("grey", "blue", "pink"), 
+                          lty = c(2, 1, 1), lwd = c(1, 2, 1))
+    if (is.null(draw.control$lwd)) 
+      draw.control$lwd = c(1, 2, 1)
+    if (is.null(draw.control$lty)) 
+      draw.control$lty = c(2, 1, 1)
+    if (is.null(draw.control$col)) 
+      draw.control$col = c("grey", "blue", "pink")
+    plot(fdataobj, lwd = draw.control$lwd[1], lty = draw.control$lty[1], 
+         col = draw.control$col[1], type = "n", main = title, cex.main = 1
+         ,xlab = "Longitud de Onda (t)", ylab = expression(hat(x)(t)), cex.lab = 0.8
+         , ylim = c(min(resample[distboot <= dist]),max(resample[distboot <= dist])))
+    lines(resample[distboot <= dist], lwd = draw.control$lwd[3], 
+          lty = draw.control$lty[3], col = draw.control$col[3])
+    lines(estmues, lwd = draw.control$lwd[2], lty = draw.control$lty[2], 
+          col = draw.control$col[2])
+    legend(posicion, legend = c("F. Media Recortada", "Región de Confianza")
+           , lty = draw.control$lty[2:3], 
+           lwd = draw.control$lwd[2:3], col = draw.control$col[2:3], cex = 0.7,inset = c(0.01,0.05),  
+           bty = "n")
+  }
+  return(list(statistic = estmues, dband = dist, rep.dist = distboot, 
+              resample = resample, fdataobj = fdataobj))
+}
+func.trimm.mia <- function(fdataobj){ depth.FM(fdataobj, trim = 0.10)$mtrim }
+
+
+media.rec.boostrap.bajo <-  fdata.bootstrap.trimm(curvas.baja.usc, statistic = func.trimm.mia
+                                                  , alpha = 0.05, nb = 200, draw = T, posicion = "topleft",smo = 0.01
+                                                  , draw.control = list("col" =  c("gold","orange","darkseagreen3"))
+                                                  ,title = "Función Media Recortada 10% ")
+```
+
+#### Función varianza
+
+```{r echo=FALSE}
+fdata.bootstrap.var <- function (fdataobj, statistic = func.mean, alpha = 0.05, nb = 200, 
+                                 smo = 0, draw = FALSE, draw.control = NULL,title ,posicion, ...) {
+  if (!is.fdata(fdataobj)) 
+    fdataobj = fdata(fdataobj)
+  data <- fdataobj[["data"]]
+  estmues <- statistic(fdataobj, ...)
+  nr <- nrow(fdataobj)
+  nc <- ncol(fdataobj)
+  tt = fdataobj[["argvals"]]
+  rtt = fdataobj[["rangeval"]]
+  names = fdataobj[["names"]]
+  distboot <- matrix(NA, nrow = nb)
+  estboot <- matrix(NA, nrow = nb, ncol = nc)
+  #pb = txtProgressBar(min = 0, max = nb, style = 3)
+  for (i in 1:nb) {
+    #setTxtProgressBar(pb, i - 0.5)
+    bmuestra <- fdataobj[sample(1:nr, size = nr, replace = TRUE), 
+    ]
+    if (smo > 0) {
+      bmuestra[["data"]] <- bmuestra[["data"]] + mvrnorm(n = nr, 
+                                                         rep(0, nc), var(data) * smo)
+    }
+    stat <- statistic(bmuestra, ...)
+    estboot[i, ] <- stat[["data"]]
+    #setTxtProgressBar(pb, i)
+  }
+  #close(pb)
+  center <- estmues
+  distboot <- metric.lp(fdata(estboot, tt, rtt), center, ...)
+  dist <- max(distboot[rank(distboot) <= floor((1 - alpha) * nb)])
+  resample <- fdata(estboot, tt, rtt, names)
+  if (draw) {
+    if (is.null(draw.control)) 
+      draw.control = list(col = c("grey", "blue", "pink"), 
+                          lty = c(2, 1, 1), lwd = c(1, 2, 1))
+    if (is.null(draw.control$lwd)) 
+      draw.control$lwd = c(1, 2, 1)
+    if (is.null(draw.control$lty)) 
+      draw.control$lty = c(2, 1, 1)
+    if (is.null(draw.control$col)) 
+      draw.control$col = c("grey", "blue", "pink")
+    plot(fdataobj, lwd = draw.control$lwd[1], lty = draw.control$lty[1], 
+         col = draw.control$col[1], type = "n", main = title, cex.main = 1
+         ,xlab = "Longitud de Onda (t)", ylab = expression(hat(x)(t)), cex.lab = 0.8
+         , ylim = c(min(resample[distboot <= dist]),max(resample[distboot <= dist])))
+    lines(resample[distboot <= dist], lwd = draw.control$lwd[3], 
+          lty = draw.control$lty[3], col = draw.control$col[3])
+    lines(estmues, lwd = draw.control$lwd[2], lty = draw.control$lty[2], 
+          col = draw.control$col[2])
+    legend(posicion, legend = c("Función Varianza", "Región de Confianza")
+           , lty = draw.control$lty[2:3], 
+           lwd = draw.control$lwd[2:3], col = draw.control$col[2:3], cex = 0.7,inset = c(0.01,0.05),  
+           bty = "n")
+  }
+  return(list(statistic = estmues, dband = dist, rep.dist = distboot, 
+              resample = resample, fdataobj = fdataobj))
+}
+par(mfrow = c(1,1))
+
+var.boostrap.bajo <- fdata.bootstrap.var(curvas.baja.usc, statistic = func.var, alpha = 0.05, nb = 1000,smo =0.01
+                                         , draw = T, draw.control = list("col" =  c("gold","orange","firebrick"))
+                                         ,title = "Función Varianza ", posicion = "topleft")
+```
+
+#### Función covarianza
+
+```{r echo=FALSE}
+var.baja <- var.fd(ajuste.baja.sin.outl$fd)
+eval.var.baja <- eval.bifd(long.onda,long.onda,var.baja)
+
+drape.plot(long.onda,long.onda,eval.var.baja, expand = 0.5, col = heat.colors(20)
+           , main = "Función Covarianza", horizontal = F, ticktype = "detailed"
+           , xlab = "t" , ylab = "t", zlab = "Covarianza")
+filled.contour(long.onda,long.onda,eval.var.baja, col = heat.colors(20)
+               , main = "Contorno \n Función de Covarianza", cex.main = 1)
+```
+
+#### Función mediana
+
+```{r echo=FALSE}
+# Boostrap
+fdata.bootstrap.mediana <- function (fdataobj, statistic = func.mean, alpha = 0.05, nb = 200, 
+                                     smo = 0, draw = FALSE, draw.control = NULL,title ,posicion, ...) {
+  if (!is.fdata(fdataobj)) 
+    fdataobj = fdata(fdataobj)
+  data <- fdataobj[["data"]]
+  estmues <- statistic(fdataobj, ...)
+  nr <- nrow(fdataobj)
+  nc <- ncol(fdataobj)
+  tt = fdataobj[["argvals"]]
+  rtt = fdataobj[["rangeval"]]
+  names = fdataobj[["names"]]
+  distboot <- matrix(NA, nrow = nb)
+  estboot <- matrix(NA, nrow = nb, ncol = nc)
+  #pb = txtProgressBar(min = 0, max = nb, style = 3)
+  for (i in 1:nb) {
+    #setTxtProgressBar(pb, i - 0.5)
+    bmuestra <- fdataobj[sample(1:nr, size = nr, replace = TRUE), 
+    ]
+    if (smo > 0) {
+      bmuestra[["data"]] <- bmuestra[["data"]] + mvrnorm(n = nr, 
+                                                         rep(0, nc), var(data) * smo)
+    }
+    stat <- statistic(bmuestra, ...)
+    estboot[i, ] <- stat[["data"]]
+    #setTxtProgressBar(pb, i)
+  }
+  #close(pb)
+  center <- estmues
+  distboot <- metric.lp(fdata(estboot, tt, rtt), center, ...)
+  dist <- max(distboot[rank(distboot) <= floor((1 - alpha) * nb)])
+  resample <- fdata(estboot, tt, rtt, names)
+  if (draw) {
+    if (is.null(draw.control)) 
+      draw.control = list(col = c("grey", "blue", "pink"), 
+                          lty = c(2, 1, 1), lwd = c(1, 2, 1))
+    if (is.null(draw.control$lwd)) 
+      draw.control$lwd = c(1, 2, 1)
+    if (is.null(draw.control$lty)) 
+      draw.control$lty = c(2, 1, 1)
+    if (is.null(draw.control$col)) 
+      draw.control$col = c("grey", "blue", "pink")
+    plot(fdataobj, lwd = draw.control$lwd[1], lty = draw.control$lty[1], 
+         col = draw.control$col[1], type = "n", main = title, cex.main = 1
+         ,xlab = "Longitud de Onda (t)", ylab = expression(hat(x)(t)), cex.lab = 0.8
+         , ylim = c(min(resample[distboot <= dist]),max(resample[distboot <= dist])))
+    lines(resample[distboot <= dist], lwd = draw.control$lwd[3], 
+          lty = draw.control$lty[3], col = draw.control$col[3])
+    lines(estmues, lwd = draw.control$lwd[2], lty = draw.control$lty[2], 
+          col = draw.control$col[2])
+    legend(posicion, legend = c("F. Mediana", "Región de Confianza")
+           , lty = draw.control$lty[2:3], 
+           lwd = draw.control$lwd[2:3], col = draw.control$col[2:3], cex = 0.7,inset = c(0.01,0.05),  
+           bty = "n")
+  }
+  return(list(statistic = estmues, dband = dist, rep.dist = distboot, 
+              resample = resample, fdataobj = fdataobj))
+}
+func.mediana <- function(fdataobj){ depth.FM(fdataobj, trim = 0)$median }
+
+# Bajo Contenido
+mediana.boostrap.bajo <-  fdata.bootstrap.mediana(curvas.baja.usc, statistic = func.mediana
+                                                  , alpha = 0.05, nb = 200, draw = T, posicion = "topleft", smo = 0.01
+                                                  , draw.control = list("col" =  c("gold","azure3","chocolate"))
+                                                  ,title = "Función Mediana ")
+lines(curvaMediana,col ="black")
+```
+
+#### Funciones cuantil 0.90 y 0.95
+
+```{r echo=FALSE}
+fdata.bootstrap.cuan <- function (fdataobj, statistic = func.mean, alpha = 0.05, nb = 200,smo = 0
+                                  , draw = FALSE, draw.control = NULL,title = "",posicion = "topleft",prob.cuan = 0.95, ...) {
+  if (!is.fdata(fdataobj)) 
+    fdataobj = fdata(fdataobj)
+  data <- fdataobj[["data"]]
+  p.region <- abs((2*prob.cuan) - 1)
+  nr <- nrow(fdataobj)
+  nc <- ncol(fdataobj)
+  prof.muestral <- depth.FM(fdataobj)$dep
+  region.muestral <- fdataobj
+  region.muestral$data <- fdataobj$data[rank(-prof.muestral) <= floor(p.region*nr),]
+  estmues <- statistic(region.muestral, ...)
+  tt = fdataobj[["argvals"]]
+  rtt = fdataobj[["rangeval"]]
+  names = fdataobj[["names"]]
+  distboot <- matrix(NA, nrow = nb)
+  estboot <- matrix(NA, nrow = nb, ncol = nc)
+  #pb = txtProgressBar(min = 0, max = nb, style = 3)
+  for (i in 1:nb) {
+    #setTxtProgressBar(pb, i - 0.5)
+    bmuestra <- fdataobj[sample(1:nr, size = nr, replace = TRUE),]
+    if (smo > 0) {
+      bmuestra[["data"]] <- bmuestra[["data"]] + mvrnorm(n = nr, rep(0, nc), var(data) * smo)
+    }
+    profboot <- depth.FM(bmuestra)$dep
+    region <- bmuestra
+    region$data <- bmuestra$data[rank(-profboot) <= floor(p.region*nr),]
+    stat <- statistic(region, ...)
+    estboot[i, ] <- stat[["data"]]
+    #setTxtProgressBar(pb, i)
+  }
+  #close(pb)
+  center <- estmues
+  distboot <- metric.lp(fdata(estboot, tt, rtt), center, ...)
+  dist <- max(distboot[rank(distboot) <= floor((1 - alpha) * nb)])    
+  resample <- fdata(estboot, tt, rtt, names)
+  
+  
+  if (draw) {
+    if (is.null(draw.control)) 
+      draw.control = list(col = c("grey", "blue", "pink"), 
+                          lty = c(2, 1, 1), lwd = c(1, 2, 1))
+    if (is.null(draw.control$lwd)) 
+      draw.control$lwd = c(1, 2, 1)
+    if (is.null(draw.control$lty)) 
+      draw.control$lty = c(2, 1, 1)
+    if (is.null(draw.control$col)) 
+      draw.control$col = c("grey", "blue", "pink")
+    
+    plot(fdataobj, lwd = draw.control$lwd[1], lty = draw.control$lty[1], 
+         col = draw.control$col[1], type = "n", main = title, cex.main = 1
+         ,xlab = "Longitud de Onda (t)", ylab = expression(hat(x)(t)), cex.lab = 0.8
+         , ylim = c(min(resample[distboot <= dist]),max(resample[distboot <= dist])))
+    
+    lines(resample[distboot <= dist], lwd = draw.control$lwd[3], 
+          lty = draw.control$lty[3], col = draw.control$col[3])
+    lines(estmues, lwd = draw.control$lwd[2], lty = draw.control$lty[2], 
+          col = draw.control$col[2])
+    legend(posicion, legend = c(paste("Cuantil", prob.cuan), "Región Central")
+           , lty = draw.control$lty[2:3], 
+           lwd = draw.control$lwd[2:3], col = draw.control$col[2:3], cex = 0.7,inset = c(0.01,0.05),  
+           bty = "n")
+  }
+  return(list(statistic = estmues, distancias.curvas = distboot,muestra.boostrap = resample
+              , curvas.ingresadas = fdataobj, region.muestral = region.muestral))
+}
+
+
+max.region.central <- function(fdataobj){
+  maxff <- apply(fdataobj$data, 2, max )
+  return(fdata(maxff, argvals = fdataobj$argvals, rangeval = fdataobj$rangeval) )     
+}
+
+# Bajo Contenido
+par(mfrow = c(1,2))
+cuan.90.bajo <- fdata.bootstrap.cuan(curvas.baja.usc, statistic = max.region.central, alpha = 0.05, nb = 300
+                                     , smo = 0.01, draw = T,title = "Cuantil 0.90",posicion = "topleft"
+                                     , draw.control = list("col" = c("black","gold","darkorange")
+                                                           ,"lty" = c(1,1,1), "lwd" = c(1,2,1))
+                                     ,prob.cuan = 0.90)
+
+cuan.95.bajo <- fdata.bootstrap.cuan(curvas.baja.usc, statistic = max.region.central, alpha = 0.05, nb = 300
+                                     , smo = 0.01, draw = T,title = "Cuantil 0.95",posicion = "topleft"
+                                     , draw.control = list("col" = c("black","chartreuse","cadetblue3")
+                                                           ,"lty" = c(1,1,1), "lwd" = c(1,2,1))
+                                     ,prob.cuan = 0.95)
+```
+
+```{r echo=FALSE}
+cuan.boostrap.bajo.90 <-  fdata.bootstrap.cuan(curvas.baja.usc, statistic = func.mean
+                                               , alpha = 0.05, nb = 200, draw = F, prob.cuan = 0.90, smo = 0.01)
+cuan.boostrap.bajo.95 <-  fdata.bootstrap.cuan(curvas.baja.usc, statistic = func.mean
+                                               , alpha = 0.05, nb = 200, draw = F, prob.cuan = 0.95, smo = 0.01)
+
+plot(cuan.boostrap.bajo.90$statistic, ylim = c(0,200), xlab = "Longitud de Onda (t)"
+     , ylab = expression(hat(x)(t)), cex.main = 1, cex.lab = 0.8
+     , main = "Función Media con Cuantiles ")
+lines(cuan.boostrap.bajo.90$quantile, col = "chartreuse3", lwd = 2, lty = 2)
+lines(cuan.boostrap.bajo.95$quantile, col = "deeppink", lwd = 2, lty = 2)
+legend("topleft", legend = c("F. Media", "F. Cuantil 0.90", "F. Cuantil 0.95"), lwd = 2, lty = c(1,2,2)
+       , col = c("black","chartreuse3","deeppink"), cex = 0.7, inset = c(0.01,0.08), bty = "n")
+
+```
+
+#### Región central 0.75
+
+```{r echo=FALSE}
+par(mfrow = c(1,1))
+
+ind.curvas.baja <- depth.FM(curvas.baja.usc, trim = 0.25)$ltrim
+region.central.baja <- curvas.baja.usc
+region.central.baja$data <- curvas.baja.usc$data[ind.curvas.baja,]
+
+plot(region.central.baja, col = "cyan3", lwd = 1, lty = 1, xlab = "Longitud de Onda (t)"
+     , ylab = expression(hat(x)(t)), main = "Región Central ", cex.main = 1
+     , cex.lab = 0.8)
+lines(region.central.baja, lty =1, col = "green")
+```
