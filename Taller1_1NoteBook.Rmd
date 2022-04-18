@@ -1,0 +1,263 @@
+---
+title: "Taller 1.1: Comparación entre regresión spline, suavizamiento spline y P-spline"
+output:
+  html_notebook: default
+  html_document:
+    df_print: paged
+  pdf_document: default
+---
+
+En el presente trabajo se presenta un ejercicio práctico tomado del articulo ...., con el fin de comparar varios métodos de suavizamiento de curvas.
+
+Este ejercicio busca simular una función afectada por ruido y suavizarla con diferentes métodos para posteriormente, reconocer el funcionamiento y evaluar el desempeño de cada uno de estos.
+
+En paralelo, se explica brevemente la implementación en R y las funciones involucradas que sean más relevantes.
+
+```{r}
+#Librerías
+library(fda)
+library(VGAM)
+library(MASS)
+library(pspline)
+library(mgcv)
+```
+
+En el articulo se propone el uso de una función coseno para generar la señal. La idea es generar una función con ruido, la que se quiere suavizar, y una función sin ruido que, para el desarrollo del ejercicio, servirá para medir el desempeño de los métodos de suavizamiento.
+
+Para la implementación en R se define una función f que recibe 5 parámetros como entrada y devuleve a la salida un vector de datos que representan una versión muestreada de la función $f:R\longrightarrow R \textbf{ }| f(t) = Acos(2\pi t+ \phi)+\epsilon$, los parámetros de la función definida en R corresponden con las constantes de la función anterior, es decir, A es la amplitud $A$, phi el ángulo de fase $\phi$, t el vector de tiempo sobre el que computa la verisón muestrada de f, y e es el error $\epsilon$ que repsentará el ruido. Adicionalmente se agrega un parámetro binario state que se coloca en 1 si se desea agregar el ruido y 0 si se desea obtener la función real sin el error.
+
+Para determinar una medida del desempeño de los métodos de suavizamiento (o regresión) se utiliza el error cuadrático medio con siglas en el ingles MSE.
+
+Este se calcula para una función suavizada $\hat{f}$ con su versión real (sin ruido) $f$ utilizando la siguiente expresión.
+
+$MSE = \frac{1}{n}(f_d-\hat{f_d})'(f_d-\hat{f_d})$
+
+donde n es el tamaño del vector de tiempo t y $f_d$, $\hat{f_d}$ son las versiones muestradas de $f$ y $\hat{f}$ respectivamente.
+
+Para la implementación en R se define una función MES que recibe como parámetros de entrada un vector "sim" y un vector "real" que representan a $f_d$ y $\hat{f_d}$ respectivamente (por la definición del MSE no importa el orden en que se pasen los parámetros). Adicionalmente se recibe un entero n que corresponde al tamaño del vector de tiempo usado para el muestreo.
+
+```{r}
+#Funciones
+f<-function(A,phi,t,e,state){
+  y<-A*cos(2*pi*t+phi)+e*state
+}
+MES<-function(real,sim, n){
+  dy <- real - sim
+  y <- (t(dy)%*%dy)/n
+}
+
+indexMAX<-function(A){
+  aux = -10000
+  for(j in 1:length(A)){
+    if(A[j] > aux){
+      aux = j
+    }
+  }
+  y<-aux
+}
+```
+
+El vector de tiempo t bajo el cual se muestrean las versiones de la función f se define dentro del intervalo [0,1] tomando 50 puntos equiespaciados incluyendo el 0 y el 1 , en la implementación en R la variable n representa el tamaño del vector t.
+
+Aparte del MSE se requieren hacer varias simulaciones del funcionamiento de cada método de suavizamiento para poder decidir sobre el desempeño de estas. Para esto, el articulo propone crear 100 funciones distintas, es decir, con constantes de amplitud y fase diferentes para suavizar cada una de estas. Lo anterior permite tener 100 MSE para cada uno de los métodos y posteriomente realizar un boxplot que permitar compararlos.
+
+El error que se suma a la función correponde a una distribución normal con varianza igual a 0.07. En esta implemnetación se crea una matriz 50x100 donde cada columna posee la función de error que se le suma a cada una de las 100 funciones.
+
+La amplitud y la fase de las 100 funciones se seleccionan aleatoriamente, en particular se utiliza la distribución de rayleigh con parámetro $\sigma$ igual a 0.3 para la amplitud, según lo que se porpone en el articulo.
+
+```{r}
+#Número de observaciones en tiempo
+n = 50
+#Número de realizaciones de X
+m = 100
+#Parámetros de proceso
+A <- as.matrix(rrayleigh(m,0.3))
+phi <- as.matrix(runif(m, 0, 2*pi))
+t <- as.matrix(seq(0,1,length=n))
+e <- as.matrix(mvrnorm(n, rep(0,m), diag(0.07,ncol = m,nrow = m)))
+```
+
+En el siguiente fragmento de código se generan las 100 funciones con ruido "temp" y las 100 funciones puras "tempR".
+
+```{r}
+#Generación de las funciones para cada proceso
+temp <- matrix(0, nrow = n, ncol = m)
+tempR <- matrix(0, nrow = n, ncol = m)
+
+for(j in 1:m){
+  temp[,j] = f(A[j],phi[j],t,e[,c(j)],1)
+  tempR[,j] = f(A[j],phi[j],t,e[,c(j)],0)
+}
+
+```
+
+En esta parte se crean las variables que almacenaran la información de las versiones suavizadas de cada una de las 100 funciones.
+
+```{r}
+#Regresión. Su utiliza la función smooth.spline con lambda = 0 para tomar el caso de la regresión o interpolación.
+
+Reg5 <- matrix(0, nrow=n, ncol=m)
+Reg15 <- matrix(0, nrow=n, ncol=m)
+Reg25 <- matrix(0, nrow=n, ncol=m)
+mseR <- matrix(0,nrow = m,ncol = 3)
+
+#Suavizamiento. Se agrega el parámetro lambda para penalizar la curvatura de la función CV.
+
+Smooth5 <- matrix(0, nrow=n, ncol=m)
+Smooth15 <- matrix(0, nrow=n, ncol=m)
+Smooth25 <- matrix(0, nrow=n, ncol=m)
+mseS <- matrix(0,nrow = m,ncol = 3)
+
+#Suavizamiento. Se agrega el parámetro lambda para penalizar la curvatura de la función GCV.
+
+Smooth5GCV <- matrix(0, nrow=n, ncol=m)
+Smooth15GCV <- matrix(0, nrow=n, ncol=m)
+Smooth25GCV <- matrix(0, nrow=n, ncol=m)
+mseSCGV <- matrix(0,nrow = m,ncol = 3)
+
+#P-Spline
+SmoothPspline5 <- matrix(0, nrow=n, ncol=m)
+SmoothPspline15 <- matrix(0, nrow=n, ncol=m)
+SmoothPspline25 <- matrix(0, nrow=n, ncol=m)
+mseP <- matrix(0, nrow = m,ncol = 3)
+```
+
+Los métodos considerados son:
+
+1.  Regresión spline: Aproxima los coeficientes $c_{i}$ minimizando el criterio de mínimos cuadrados $MSE(c_i|x_i) = (x_i - \phi_i a_i)'(x_i - \phi_i a_i)$ obteniendo como estimadores $\hat{c_i} = (\phi^{'}_{i} \phi_{i})^{-1} \phi^{'}_{i} x_{i}$
+
+2.  Suavizamiento spline: Introduce un término de penalización $\int [D^{2} x_{i}(s)]^{2} ds = c^{'}_{i} R_{2} c_{i}$ que mide la rugosidad de una función. Así, se minimiza $CPMSE_{2}(c_i\|x_i) =(x_i - \phi_i a_i)'(x_i -\phi_i a_i) + \lambda c_{i}^{'}P{d} c_{i}$ donde los coeficientes estimados son $\hat{c_i} = (\phi^{'}_{i} \phi_{i} \lambda R_{2})^{-1} \phi^{'}_{i} x_{i}$
+
+3.  P-splines: La rugosidad considerada en el método anterior trae consigo un problema computacional debido al cálculo de las integrales de segundas derivadas al cuadrado para la matriz R2. P-splines considera un enfoque más sencillo definiendo la rugosidad de una función como la suma de las diferencias de orden d al cuadrado. Este tipo de penalización depende de la base usada y sólo funciona si los puntos de la muestra están igualmente espaciados. Ahora bien, P-splines minimiza el error de mínimos cuadrados penalizados $DPMSE_{d}(c_i\|x_i) = (x_i - \phi_i a_i)'(x_i -\phi_i a_i) +\lambda c_{i}^{'}P_{d} c_{i}$ donde $P_d = (\triangle^{d})^{'} \triangle^{d}$ con la representación matricial del operador de diferencias de orden d. Se obtiene como estimadores de los coeficientes $\hat{c_i} = (\phi^{'}_{i}\phi_{i} \lambda P_{d})^{-1} \phi^{'}_{i} x_{i}$.
+
+Para el suavizamiento spline y P-spline se debe seleccionar el parámetro de suavizamiento $\lambda$, esta selección se realiza por el método de validación cruzada ordinario y/o generalizado. En este trabajo se realiza el suavizamiento con ambos métodos de validación para finalmente compararlos. Tambien se realizará el suavizamiento para 5, 15 y 25 knots. Para el suavizamiento y regresión spline se utiliza la función smoot.spline() que recibe como parámetros los datos x, y, el número de knots y el método de validación a utilizar. Para el caso de la regresión se asigna a $\lambda$ el valor de cero. Para el suavizamiento se deja libre el parámetro $\lambda$ y se selecciona cv = TRUE para validación cruzada ordinaria y cv = FALSE para validación cruzada generalizada.
+
+En el caso del suavizamiento P-spline se utiliza la función gamm() que permite ajustar un conjunto de datos a un modelo, este modelo se genera usando la función s() que recibe en este caso particular el vector de tiempo t, un idicador de que se utilizarán P-spline bs='ps', el orden de la base, que corresponde a 2 para obtener bases cubicas y el número de knots a utilizar.
+
+```{r}
+for (j in 1:ncol(temp)){
+  Reg5[,j] <- smooth.spline(t, temp[,j], nknots=5,cv=T, lambda = 0)$y
+  mseR[j,1]<- c(MES(Reg5[,j],tempR[,j], n))
+  Reg15[,j] <- smooth.spline(t, temp[,j], nknots=15,cv=T, lambda = 0)$y
+  mseR[j,2]<- c(MES(Reg15[,j],tempR[,j], n))
+  Reg25[,j] <- smooth.spline(t, temp[,j], nknots=25,cv=T, lambda = 0)$y
+  mseR[j,3]<- c(MES(Reg25[,j],tempR[,j], n))
+  
+  Smooth5[,j] <- smooth.spline(t, temp[,j], nknots=5,cv=T)$y
+  mseS[j,1]<- MES(Smooth5[,j],tempR[,j], n)
+  Smooth15[,j] <- smooth.spline(t, temp[,j], nknots=15,cv=T)$y
+  mseS[j,2]<- MES(Smooth15[,j],tempR[,j], n)
+  Smooth25[,j] <- smooth.spline(t, temp[,j], nknots=25,cv=T)$y
+  mseS[j,3]<- MES(Smooth25[,j],tempR[,j], n)
+  
+  Smooth5GCV[,j] <- smooth.spline(t, temp[,j], nknots=5,cv=F)$y
+  mseSCGV[j,1]<- MES(Smooth5GCV[,j],tempR[,j], n)
+  Smooth15GCV[,j] <- smooth.spline(t, temp[,j], nknots=15,cv=F)$y
+  mseSCGV[j,2]<- MES(Smooth15GCV[,j],tempR[,j], n)
+  Smooth25GCV[,j] <- smooth.spline(t, temp[,j], nknots=25,cv=F)$y
+  mseSCGV[j,3]<- MES(Smooth25GCV[,j],tempR[,j], n)
+  
+  SmoothPspline5[,j]<-gamm(temp[,j]~s(t,bs="ps",m=2,k=5))$gam$fitted
+  mseP[j,1]<- MES(SmoothPspline5[,j],tempR[,j], n)
+  SmoothPspline15[,j]<-gamm(temp[,j]~s(t,bs="ps",m=2,k=15))$gam$fitted
+  mseP[j,2]<- MES(SmoothPspline15[,j],tempR[,j], n)
+  SmoothPspline25[,j]<-gamm(temp[,j]~s(t,bs="ps",m=2,k=25))$gam$fitted
+  mseP[j,3]<- MES(SmoothPspline25[,j],tempR[,j], n)
+}
+
+```
+
+Acontinuación se muestran gráficos que comparan los resultados para la regresión, el suavizamiento CV y GCV y suavizamiento P-spline. Para cada uno de ellos se muestran 5 curvas, la curva sin ruido o real, la curva con ruido o simulada y las curvas suavizadas para 5, 15 y 25 knots.
+
+```{r}
+# Cambiar j = 1, .., 100 permite visualizar las gráficas para alguna de las 100 versiones de funciones.
+
+j = indexMAX(A)
+
+sprintf("Amplitud = %f, fase = %f", A[j], phi[j])
+
+```
+
+##### Regresión spline
+
+```{r echo=FALSE}
+#-----------------REGRESION
+plot(t, type ="l",temp[,j], ylab = "f(t)", xlab="t",col=2,
+     ylim=c(min(Smooth5),max(Smooth5)))
+lines(t, tempR[,j], col=1)
+lines(t, Reg5[,j], col=3)
+lines(t, Reg15[,j], col=4)
+lines(t, Reg25[,j], col=5)
+legend(0.8,0.05,col=c(col=1,col=2,col=3, col=4, col=5),legend
+       =c("real","Simulada","knots=5","knots=15", "knots=25"), lwd=1, bty = "n",cex=0.6)
+
+```
+
+##### Suavizado spline con validación cruzada ordinaria.
+
+```{r echo=FALSE}
+#-----------------SUAVIZADO CV
+plot(t, type ="l",tempR[,j], ylab = "f(t)", xlab="t",col=1,
+     ylim=c(min(Smooth5),max(Smooth5)))
+lines(t, temp[,j], col=2)
+lines(t, Smooth5[,j], col=3)
+lines(t, Smooth15[,j], col=4)
+lines(t, Smooth25[,j], col=5)
+legend(0.8,0.05,col=c(col=1,col=2,col=3, col=4, col=5),legend
+       =c("real","Simulada","knots=5","knots=15", "knots=25"), lwd=1, bty = "n",cex=0.6)
+```
+
+##### Suavizado spline con validación cruzada generalizada
+
+```{r echo=FALSE}
+#-----------------SUAVIZADO GCV
+plot(t, type ="l",tempR[,j], ylab = "f(t)", xlab="t",col=1,
+     ylim=c(min(Smooth5),max(Smooth5)))
+lines(t, temp[,j], col=2)
+lines(t, Smooth5GCV[,j], col=3)
+lines(t, Smooth15GCV[,j], col=4)
+lines(t, Smooth25GCV[,j], col=5)
+legend(0.8,0.05,col=c(col=1,col=2,col=3, col=4, col=5),legend
+       =c("real","Simulada","knots=5","knots=15", "knots=25"), lwd=1, bty = "n",cex=0.6)
+
+```
+
+##### Suavizado P-spline
+
+```{r echo=FALSE}
+#-----------------SUAVIZADO P-SPILNE
+plot(t, type ="l",tempR[,j], ylab = "f(t)", xlab="t",col=1,
+     ylim=c(min(Smooth5),max(Smooth5)))
+lines(t, temp[,j], col=2)
+lines(t, SmoothPspline5[,j], col=3)
+lines(t, SmoothPspline15[,j], col=4)
+lines(t, SmoothPspline25[,j], col=5)
+legend(0.8,0.05,col=c(col=1,col=2,col=3, col=4, col=5),legend
+       =c("real","Simulada","knots=5","knots=15", "knots=25"), lwd=1, bty = "n",cex=0.6)
+
+```
+
+##### Boxplots entre métodos distintos.
+
+En los siguientes boxplots se comparan los valores de MSE obtenidos para el suavizamiento spline CV, suavizamiento spline GCV y suavizamiento P-spline.
+
+```{r echo=FALSE}
+#---------------BOX-PLOT
+
+boxplot(mseS[,1],mseSCGV[,1],mseP[,1],names = c('SmoothCV','SmoothGCV','Pspline'),ylab = 'MSE',xlab = '5 knots',outline = FALSE)
+
+boxplot(mseS[,2],mseSCGV[,2],mseP[,2],names = c('SmoothCV','SmoothGCV','Pspline'),ylab = 'MSE',xlab = '15 knots',outline = FALSE)
+
+boxplot(mseS[,3],mseSCGV[,3],mseP[,3],names = c('SmoothCV','SmoothGCV','Pspline'),ylab = 'MSE',xlab = '25 knots',outline = FALSE)
+```
+
+##### Boxplots entre métodos iguales
+
+```{r echo=FALSE}
+
+boxplot(mseP[,1],mseP[,2],mseP[,3],names = c('5 knots','15 knots','25 knots'),ylab = 'MSE',xlab = 'P-splines',outline = FALSE)
+
+boxplot(mseS[,1],mseS[,2],mseS[,3],names = c('5 knots','15 knots','25 knots'),ylab = 'MSE',xlab = 'Smoothing splines CV',outline = FALSE)
+
+boxplot(mseSCGV[,1],mseSCGV[,2],mseSCGV[,3],names = c('5 knots','15 knots','25 knots'),ylab = 'MSE',xlab = 'Smoothing spline GCV',outline = FALSE)
+```
