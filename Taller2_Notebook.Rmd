@@ -6,79 +6,68 @@ output:
   html_notebook: default
   pdf_document: default
 ---
+1) Con relación a los operadores lineales y al espacio de las funciones cuadrado integrables:
+  a) Explique por qué el espacio de las funciones continuas no es un espacio adecuado para representar las observaciones funcionales.
+  
+  Según el libro, se pueden definir espacios adecuados para cada conjunto de datos, por ejemplo: En el caso más simple, los números escalares pertenecen al espacio definido en la linea recta o números reales; en estadística multivariada, los datos son vectores que pertenecen a $R^d$ donde $d$ es la dimensión del vector. Para el caso de datos funcionales, se considera un espacio de dimensión infinita aunque las funciones sean observadas en tiempos discretos. El primer paso consiste en tomar las observaciones en los puntos discretos y convertirlos en objetos funcionales usando bases de expansión; por lo tanto, si consideramos una base de funciones trigonométricas obtenemos funciones continuas definidas en un intervalo $[a, b]$, es decir que se heredan las propiedades de las base. Teniendo en cuenta lo anterior y si adicionalmete agregamos la restricción de que las funciones deben ser diferenciables $n$ veces, encontramos que el espacio más apropiado para definir estás funciones es el espacio $L^2$, el espacio de funciones ciadrado integrables.
+  
+  b) Explique por que la igualdad en el espacio $L^2$ es en el sentido de casi siempre.
 
-1)  Con relación a los operadores lineales y al espacio de las funciones cuadrado integrables:
+  c) Qué propiedades tiene el operador de covarianza?
+  Según el teorema 11.2.2 del libro $Kokoszka, P., & Reimherr, M. (2017)$, las propiedades de un operador de covariaza $C$ de un conjunto de funciones aleatorias cuadrado integrables son:
+      1) $C$ es simétrico.
+      2) $C$ es definido no negativo.
+      3) La suma de los valores propios de $C$ es finita.
+  
+  d) De acuerdo a las propiedades que presenta el operador de covarianza, presente una descomposición adecuada de este operador.
+  e) Sea $Ψ$ un operador integral con el kernel gaussiano $ψ(t, s) = α exp(−(t2 + s2)/2)$.
 
-<!-- -->
+      1) Para que valores de $/alpha$ $Ψ$ es un operador de Hilbert-Schmidt.
+      2) Muestre que kΨkL ≤k Ψ kHS.
+      3) Encuentre la norma del kernel.
+      4) Halle la descomposición espectral del operador Ψ.
+  f) Explique qué es una base óptima para representar funciones aleatorias y presente una.
+  g) Explique cómo se encuentran las funciones propias y los valores propias del operador de covarianza.
+  h) Explique cómo se encuentran las estimaciones de las funciones propias y de los valores propios del operador de covarianza.
 
-a)  Explique por qué el espacio de las funciones continuas no es un espacio adecuado para representar las observaciones funcionales. Según el libro, se pueden definir espacios adecuados para cada conjunto de datos, por ejemplo: En el caso más simple, los números escalares pertenecen al espacio definido en la linea recta o números reales; en estadística multivariada, los datos son vectores que pertenecen a $R^d$ donde $d$ es la dimensión del vector. Para el caso de datos funcionales, se considera un espacio de dimensión infinita aunque las funciones sean observadas en tiempos discretos. El primer paso consiste en tomar las observaciones en los puntos discretos y convertirlos en objetos funcionales usando bases de expansión; por lo tanto, si consideramos una base de funciones trigonométricas obtenemos funciones continuas definidas en un intervalo $[a, b]$, es decir que se heredan las propiedades de las base. Teniendo en cuenta lo anterior y si adicionalmete agregamos la restricción de que las funciones deben ser diferenciables $n$ veces, encontramos que el espacio más apropiado para definir estás funciones es el espacio $L^2$, el espacio de funciones ciadrado integrables.
 
-b)  Explique por que la igualdad en el espacio $L^2$ es en el sentido de casi siempre.
+2) Estudie el artículo de Galeano, Joseph & Lillo (2015) e implemente los procedimientos de clasicación kNN y
+centroide, usando el conjunto de datos Tecator y la función de Mahalanobis. Explique los resultados obtenidos.
 
-c)  Qué propiedades tiene el operador de covarianza? Según el teorema 11.2.2 del libro $Kokoszka, P., & Reimherr, M. (2017)$, las propiedades de un operador de covariaza $C$ de un conjunto de funciones aleatorias cuadrado integrables son:
+En el articulo "The Mahalanobis Distance for Functional Data with
+Applications to Classification" se describe un procedimiento que utiliza una extensión de la función de distancia de Mahalanobis para datos multivariados a datos funcionales. El proceso se puede resumir en los siguientes pasos:
 
-    1)  $C$ es simétrico.
-    2)  $C$ es definido no negativo.
-    3)  La suma de los valores propios de $C$ es finita.
+   1) Teniendo en cuenta que las observaciones no son observadas continuamente en un intervalo $[a, b]$, por lo tanto tampoco se puede obtener la función de semi-distanciade Mahalanobis, el primer paso consiste en usar bases de funciones para suavizar las curvas de tal manera que el proceso pueda ser bien aproximado mediante $X_i (t) = \sum_{m-1}^{M} \beta_{im} \phi_{m} (t)$. Para obtener las estimaciones de los coeficientes usamos MCO minimizando la expresión:
+     
+      $\sum_{j=1}^{J_i}[ (X_i^{*} (t_{j,i}) -  \sum_{m=1}^{M} \beta_{im} \phi_{m} (t_{i,j}) ) ]^2$.
+      
+  2) Una vez todas la cuervas están suavizadas, se obtiene la media funcional estimada y el operador de covarianza estimado, así: $\hat\mu_{X} = \frac{1}{n} \sum_{i=1}^{n}  X_{i}$ y $ \hat\Gamma_{X} (\eta) = \frac{1}{n-1} \sum_{i=1}^{n} \langle X_{i} -\mu_{X_{i}} ,\eta \rangle  (X_{i} -\mu_{X_{i}})$
+      
+  3) Obtenemos funciones propias y los valores propiosde $\hat\Gamma_{X}$ como
+      $\hat\psi_1, \hat\psi_2,...$ y $\hat\lambda_1, \hat\lambda_2, ...$ respectivamente, tambien los scores de los componentes principales funcionales $\theta_{i,k} = \langle X_{i} -\mu_{X_{i}} ,\psi \rangle$.
+  4) Finalmente podemos definir la función de semidistancia de Mahalanobis entre $X_i$ y la media funcional $\hat\mu_{X}$   como:
+  $d_{FM}^{K} (X_i, \hat\mu_{X}) = (\sum_{k=1}^{K} \hat\omega^2_{ik})^{1/2}$
+  donde los $\hat\omega_{ik} = \hat \theta_{ik}/ \hat\lambda_{k}^{1/2}$ para $k = 1, 2,...,K.$ y corresponden a los scores de los componenetes principales funcionales estandarizados.
+  
+La elección del parámetro de regularización $K$ es un aspecto importante en la práctica dependiendo de la situación en la que se utiliza la semidistancia funcional de Mahalanobis. En el caso de la clasificación, elegimos el valor umbral $K$ a través de validación cruzada leave-one-out.
 
-d)  De acuerdo a las propiedades que presenta el operador de covarianza, presente una descomposición adecuada de este operador.
 
-e)  Sea $Ψ$ un operador integral con el kernel gaussiano $ψ(t, s) = α exp(−(t2 + s2)/2)$.
-
-    1)  Para que valores de $/alpha$ $Ψ$ es un operador de Hilbert-Schmidt.
-    2)  Muestre que kΨkL ≤k Ψ kHS.
-    3)  Encuentre la norma del kernel.
-    4)  Halle la descomposición espectral del operador Ψ.
-
-f)  Explique qué es una base óptima para representar funciones aleatorias y presente una.
-
-g)  Explique cómo se encuentran las funciones propias y los valores propias del operador de covarianza.
-
-h)  Explique cómo se encuentran las estimaciones de las funciones propias y de los valores propios del operador de covarianza.
-
-<!-- -->
-
-2)  Estudie el artículo de Galeano, Joseph & Lillo (2015) e implemente los procedimientos de clasicación kNN y centroide, usando el conjunto de datos Tecator y la función de Mahalanobis. Explique los resultados obtenidos.
-
-En el articulo $The Mahalanobis Distance for Functional Data with Applications to Classification$ se describe un procedimiento que utiliza una extensión de la función de distancia de Mahalanobis para datos multivariados a datos funcionales. El proceso se puede resumir en los siguientes pasos: 1) Teniendo en cuenta que las observaciones no son observadas continuamente en un intervalo $[a, b]$, por lo tanto tampoco se puede obtener la función de semi-distanciade Mahalanobis, el primer paso consiste en usar bases de funciones para suavizar las curvas de tal manera que el proceso pueda ser bien aproximado mediante $X_i (t) = \sum_{m-1}^{M} \beta_{im} \phi_{m} (t)$. Para obtener las estimaciones de los coeficientes usamos MCO minimizando lae xpresión: $[ \sum_{j=1}^{J_i} (X_i^{*} (t_{j,i}) - \sum_{m=1}^{M} \beta_{im} \phi_{m} (t_{i,j}) ) ]^2$.
-
-2)  Una vez todas la cuervas están suavizadas, se obtiene la media funcional estimada y el operador de covarianza estimado, así: $\hat\mu_{X} = \frac{1}{n} \sum_{i=1}^{n} X_{i}$ y \$ \hat\Gamma\*{X} (\*\eta) = \frac{1}{n-1} \sum{i=1}\^{n} \langle X\_{i} -\mu\*{X\*{i}} ,\eta \\rangle (X\_{i} -\mu\*{X\*{i}})\$
-
-3)  Obtenemos funciones propias y los valores propiosde $\hat\Gamma_{X}$ como $\hat\psi_1, \hat\psi_2,...$ y $\hat\lambda_1, \hat\lambda_2, ...$ respectivamente, tambien los scores de los componentes principales funcionales $\theta_{i,k} = \langle X_{i} -\mu_{X_{i}} ,\psi \rangle$.
-
-4)  Finalmente podemos definir la función de semidistancia de Mahalanobis entre $X_i$ y la media funcional $\hat\mu_{X}$ como: $d_{FM}^{K} (X_i, \hat\mu_{X}) = (\sum_{k=1}^{K} \hat\omega^2_{ik})^{1/2}$ donde los $\hat\omega_{ik} = \hat \theta_{ik}/ \hat\lambda_{k}^{1/2}$ para $k = 1, 2,...,K.$ y corresponden a los scores de los componenete principales funcionales estandarizados. La elección del parámetro de regularización $K$ es un aspecto importante en la práctica dependiendo de la situación en la que se utiliza la semidistancia funcional de Mahalanobis. En el caso de la clasificación, elegimos el valor umbral $K$ a través de validación cruzada leave-one-out.
-
-#The k-nearest neighbor (kNN) procedure
+### The k-nearest neighbor (kNN) procedure
 
 En su verión multivariada, es un método usado para clasificacion. Su contraparte funcional se utiliza para clasificar una curva nueva $X_0$ en alguno de los grupos ya preestablecidos. Para eso, se puede establecer 2 posibles caminos, si los grupos tienen la misma estructura de covarianza o cada uno de los grupos tiene una matriz de covarianza diferente, de esta manera, se aplican los mismos pasos mencinados anteriormente.
 
 # The centroid procedure
 
-Consiste en asignar cada una de las observaciones nuevas en en algunos de los grupos, esto se hace teniendo en cuenta la media funcional de cada grupo y considerando si la estructura de covanrianza es la misma o diferente para los grupos, se asigna la nueva observación al grupo $i$ cuando la semi-distacia de Mahalanobis entre la observacion nueva y la media funcional de cada grupo sea mínima. Este enfoque es más simple y más rápido con respecto a los demás. En la siguiente gráfica se observa las curvas para una muestra de datos.
+Consiste en asignar cada una de las observaciones nuevas en en algunos de los grupos, esto se hace teniendo en cuenta la media funcional de cada grupo y considerando si la estructura de covanrianza es la misma o diferente para los grupos, se asigna la nueva observación al grupo $i$ cuando la semi-distacia de Mahalanobis entre la observacion nueva y la media funcional de cada grupo sea mínima. Este enfoque es más simple y más rápido con respecto a los demás.
+#### Tecator dataset
+En la siguiente gráfica se observa las curvas para una muestra de datos.
 
-![alt text here](samples.png) En la siguiente gráfica se compara los porcentajes de clasificación correcta en el conjunto de datos de tecator con cada uno se los 19 métodos de clasificación mencionados en el documento, se observa que los 2 mejores métodos son kMD y kMC la cuales corresponden a las semi-distancias de Mahalanobis teniendo en cuenta el operador de covarianza con la misma o diferente estructura para todos los grupos ![alt text here](box.png)
-
-d)  De acuerdo a las propiedades que presenta el operador de covarianza, presente una descomposición adecuada de este operador.
-
-e)  Sea $Ψ$ un operador integral con el kernel gaussiano $ψ(t, s) = α exp(−(t2 + s2)/2)$.
-
-    1)  Para que valores de $/alpha$ $Ψ$ es un operador de Hilbert-Schmidt.
-    2)  Muestre que kΨkL ≤k Ψ kHS.
-    3)  Encuentre la norma del kernel.
-    4)  Halle la descomposición espectral del operador Ψ.
-
-f)  Explique qué es una base óptima para representar funciones aleatorias y presente una.
-
-g)  Explique cómo se encuentran las funciones propias y los valores propias del operador de covarianza.
-
-h)  Explique cómo se encuentran las estimaciones de las funciones propias y de los valores propios del operador de covarianza.
-
-<!-- -->
-
-2)  Estudie el artículo de Galeano, Joseph & Lillo (2015) e implemente los procedimientos de clasicación kNN y centroide, usando el conjunto de datos Tecator y la función de Mahalanobis. Explique los resultados obtenidos.
-
-En el articulo $The Mahalanobis Distance for Functional Data with Applications to Classification$ se describe un procedimiento que utiliza una extensión de la función de distancia de Mahalanobis para datos multivariados a datos funcionales.
-
+  ![alt text here](samples.png)
+  
+En la siguiente gráfica se compara los porcentajes de clasificación correcta en el conjunto de datos de tecator con cada uno se los 19 métodos de clasificación mencionados en el documento, se observa que los 2 mejores métodos son kMD y kMC la cuales corresponden a las semi-distancias de Mahalanobis teniendo en cuenta el operador de covarianza  con la misma o diferente estructura para todos los grupos
+      ![alt text here](box.png)
+      
+     
 3)  Considere las curvas espectrométricas usadas en el proceso de producción de azúcar.
 
 Se tienen 7 procesos aleatorios relacionados con la respuesta espectro gráfica de muestras de azúcar a determinadas longitudes de onda de excitación.
@@ -252,9 +241,7 @@ plot(zi[3,])
     5)  Presente una matriz con los grácos de dispersión de las realizaciones de los scores que conjuntamente explican el 90 % de la variación del proceso. Explique el comportamiento de los scores
     6)  Exprese la función de covarianza en términos de los valores y funciones propias del operador de covarianza. Gráfique esta representación.
 
-```{=html}
-<!-- -->
-```
+
 b)  Considere todo los 7 procesos presentados en el conjunto de datos.
     1)  Usando la propuesta de Berrendero, Justel & Svarc (2011):
         a)  Encuentre las estimaciones de las tres primeras funciones propias multivariadas, grafíquelas y presente una explicación de ellas.
@@ -394,7 +381,7 @@ long.onda <- as.numeric(long.onda)
 
 Para que el suavizamiento de todo el proceso multivariado se realice bajo el mismo parámetro $\lambda$ se define la función minimo.lambda() que sirve para determinar el valor de $\lambda$ que minimiza el promedio del criterio de validación cruzada generalizada entre todas las curvas de la muestra para cada proceso.
 
-```{r}
+```{r, echo=FALSE}
 minimo.lambda <- function(base, datos, tiempo,minimo, maximo, aumento)
 { 
   vector.lambda <- seq(minimo,maximo,aumento)
@@ -459,7 +446,8 @@ Una vez tenemos todas la curvas suavizadas para cada uno de los 7 procesos, apli
 
 Para cada tiempo $t$ obtenemos una matriz $X(t)$ de dimension $268 \times 7$, procedemos calculando la matriz $\Sigma (t) = X'(t) X(t)$, y finalmente, a cada una de estas $571$ le sacamos los valores y vectores propios.
 
-```{r}
+```{r, echo=FALSE}
+
 out.valores = NULL
 out.vectores = NULL
 out.Z = NULL
@@ -482,14 +470,17 @@ for (tiempo in 1:571) {
   out.valores = bind_rows(out.valores, e.values)
   out.vectores = bind_rows(out.vectores, ev.values)
   
-  print(tiempo)
+  #print(tiempo)
   rm(base, X, e.values, ev.values, Z)
   
  
 }
 ```
 
-```{r}
+
+
+```{r, echo=FALSE}
+
 ## Plot to see all the curvs from all the process
 names(out.vectores) = c('V1','V2',vec_class )
 out.vectores.plot = out.vectores %>%  as.data.table() %>% 
@@ -510,7 +501,7 @@ ggplot(out.vectores.plot, aes(x  = V1, y = value)) +
 
 Ahora procedemos a calcular los nuevos componentes $Z(t)$ y la proyección de los indivusuos sobre el nuevo espacio
 
-```{r}
+```{r, echo=FALSE}
 ## Plot to see all the curvs from all the process
 out.Z_plot = out.Z %>% t() %>%  as.data.table() %>% 
   .[,sample := 1:268,] %>% 
