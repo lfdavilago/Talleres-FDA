@@ -1,19 +1,25 @@
 ---
 title: "Taller 1.1: Comparación entre regresión spline, suavizamiento spline y P-spline"
 output:
-  html_notebook: default
   html_document:
     df_print: paged
+  html_notebook: default
   pdf_document: default
 ---
 
-En el presente trabajo se presenta un ejercicio práctico tomado del articulo ...., con el fin de comparar varios métodos de suavizamiento de curvas.
+#### Presentado por:
 
-Este ejercicio busca simular una función afectada por ruido y suavizarla con diferentes métodos para posteriormente, reconocer el funcionamiento y evaluar el desempeño de cada uno de estos.
+Juan Sebastian Oviedo Mozo
+
+Luis Felipe Dávila Goyeneche
+
+En el presente trabajo se presenta un ejercicio práctico tomado del artículo propuesto, con el fin de comparar varios métodos de suavizamiento de curvas.
+
+Este ejercicio busca simular una función afectada por ruido y suavizar con diferentes métodos para posteriormente, reconocer el funcionamiento y evaluar el desempeño de cada uno de estos.
 
 En paralelo, se explica brevemente la implementación en R y las funciones involucradas que sean más relevantes.
 
-```{r}
+```{r include=FALSE}
 #Librerías
 library(fda)
 library(VGAM)
@@ -22,17 +28,17 @@ library(pspline)
 library(mgcv)
 ```
 
-En el articulo se propone el uso de una función coseno para generar la señal. La idea es generar una función con ruido, la que se quiere suavizar, y una función sin ruido que, para el desarrollo del ejercicio, servirá para medir el desempeño de los métodos de suavizamiento.
+En el artículo se propone el uso de una función coseno para generar la señal. La idea es generar una función con ruido, la que se quiere suavizar, y una función sin ruido que, para el desarrollo del ejercicio, servirá para medir el desempeño de los métodos de suavizamiento.
 
-Para la implementación en R se define una función f que recibe 5 parámetros como entrada y devuleve a la salida un vector de datos que representan una versión muestreada de la función $f:R\longrightarrow R \textbf{ }| f(t) = Acos(2\pi t+ \phi)+\epsilon$, los parámetros de la función definida en R corresponden con las constantes de la función anterior, es decir, A es la amplitud $A$, phi el ángulo de fase $\phi$, t el vector de tiempo sobre el que computa la verisón muestrada de f, y e es el error $\epsilon$ que repsentará el ruido. Adicionalmente se agrega un parámetro binario state que se coloca en 1 si se desea agregar el ruido y 0 si se desea obtener la función real sin el error.
+Para la implementación en R se define una función f que recibe 5 parámetros como entrada y devuelve a la salida un vector de datos que representan una versión muestreada de la función $f:R\longrightarrow R \textbf{ }| f(t) = Acos(2\pi t+ \phi)+\epsilon$, los parámetros de la función definida en R corresponden con las constantes de la función anterior, es decir, A es la amplitud $A$, phi el ángulo de fase $\phi$, t el vector de tiempo sobre el que computa la versión muestreada de f, y e es el error $\epsilon$ que representará el ruido. Adicionalmente se agrega un parámetro binario state que se coloca en 1 si se desea agregar el ruido y 0 si se desea obtener la función real sin el error.
 
-Para determinar una medida del desempeño de los métodos de suavizamiento (o regresión) se utiliza el error cuadrático medio con siglas en el ingles MSE.
+Para determinar una medida del desempeño de los métodos de suavizamiento (o regresión) se utiliza el error cuadrático medio con siglas en el inglés MSE.
 
 Este se calcula para una función suavizada $\hat{f}$ con su versión real (sin ruido) $f$ utilizando la siguiente expresión.
 
 $MSE = \frac{1}{n}(f_d-\hat{f_d})'(f_d-\hat{f_d})$
 
-donde n es el tamaño del vector de tiempo t y $f_d$, $\hat{f_d}$ son las versiones muestradas de $f$ y $\hat{f}$ respectivamente.
+donde n es el tamaño del vector de tiempo t y $f_d$, $\hat{f_d}$ son las versiones muestreadas de $f$ y $\hat{f}$ respectivamente.
 
 Para la implementación en R se define una función MES que recibe como parámetros de entrada un vector "sim" y un vector "real" que representan a $f_d$ y $\hat{f_d}$ respectivamente (por la definición del MSE no importa el orden en que se pasen los parámetros). Adicionalmente se recibe un entero n que corresponde al tamaño del vector de tiempo usado para el muestreo.
 
@@ -59,11 +65,11 @@ indexMAX<-function(A){
 
 El vector de tiempo t bajo el cual se muestrean las versiones de la función f se define dentro del intervalo [0,1] tomando 50 puntos equiespaciados incluyendo el 0 y el 1 , en la implementación en R la variable n representa el tamaño del vector t.
 
-Aparte del MSE se requieren hacer varias simulaciones del funcionamiento de cada método de suavizamiento para poder decidir sobre el desempeño de estas. Para esto, el articulo propone crear 100 funciones distintas, es decir, con constantes de amplitud y fase diferentes para suavizar cada una de estas. Lo anterior permite tener 100 MSE para cada uno de los métodos y posteriomente realizar un boxplot que permitar compararlos.
+Aparte del MSE se requieren hacer varias simulaciones del funcionamiento de cada método de suavizamiento para poder decidir sobre el desempeño de estas. Para esto, el artículo propone crear 100 funciones distintas, es decir, con constantes de amplitud y fase diferentes para suavizar cada una de estas. Lo anterior permite tener 100 MSE para cada uno de los métodos y posteriormente realizar un boxplot que permita compararlos.
 
-El error que se suma a la función correponde a una distribución normal con varianza igual a 0.07. En esta implemnetación se crea una matriz 50x100 donde cada columna posee la función de error que se le suma a cada una de las 100 funciones.
+El error que se suma a la función corresponde a una distribución normal con varianza igual a 0.07. En esta implementación se crea una matriz 50x100 donde cada columna posee la función de error que se le suma a cada una de las 100 funciones.
 
-La amplitud y la fase de las 100 funciones se seleccionan aleatoriamente, en particular se utiliza la distribución de rayleigh con parámetro $\sigma$ igual a 0.3 para la amplitud, según lo que se porpone en el articulo.
+La amplitud y la fase de las 100 funciones se seleccionan aleatoriamente, en particular se utiliza la distribución de rayleigh con parámetro \$\\sigma\$ igual a 0.3 para la amplitud, según lo que se propone en el artículo.
 
 ```{r}
 #Número de observaciones en tiempo
@@ -91,7 +97,7 @@ for(j in 1:m){
 
 ```
 
-En esta parte se crean las variables que almacenaran la información de las versiones suavizadas de cada una de las 100 funciones.
+En esta parte se crean las variables que almacenan la información de las versiones suavizadas de cada una de las 100 funciones.
 
 ```{r}
 #Regresión. Su utiliza la función smooth.spline con lambda = 0 para tomar el caso de la regresión o interpolación.
@@ -130,9 +136,9 @@ Los métodos considerados son:
 
 3.  P-splines: La rugosidad considerada en el método anterior trae consigo un problema computacional debido al cálculo de las integrales de segundas derivadas al cuadrado para la matriz R2. P-splines considera un enfoque más sencillo definiendo la rugosidad de una función como la suma de las diferencias de orden d al cuadrado. Este tipo de penalización depende de la base usada y sólo funciona si los puntos de la muestra están igualmente espaciados. Ahora bien, P-splines minimiza el error de mínimos cuadrados penalizados $DPMSE_{d}(c_i\|x_i) = (x_i - \phi_i a_i)'(x_i -\phi_i a_i) +\lambda c_{i}^{'}P_{d} c_{i}$ donde $P_d = (\triangle^{d})^{'} \triangle^{d}$ con la representación matricial del operador de diferencias de orden d. Se obtiene como estimadores de los coeficientes $\hat{c_i} = (\phi^{'}_{i}\phi_{i} \lambda P_{d})^{-1} \phi^{'}_{i} x_{i}$.
 
-Para el suavizamiento spline y P-spline se debe seleccionar el parámetro de suavizamiento $\lambda$, esta selección se realiza por el método de validación cruzada ordinario y/o generalizado. En este trabajo se realiza el suavizamiento con ambos métodos de validación para finalmente compararlos. Tambien se realizará el suavizamiento para 5, 15 y 25 knots. Para el suavizamiento y regresión spline se utiliza la función smoot.spline() que recibe como parámetros los datos x, y, el número de knots y el método de validación a utilizar. Para el caso de la regresión se asigna a $\lambda$ el valor de cero. Para el suavizamiento se deja libre el parámetro $\lambda$ y se selecciona cv = TRUE para validación cruzada ordinaria y cv = FALSE para validación cruzada generalizada.
+Para el suavizamiento spline y P-spline se debe seleccionar el parámetro de suavizamiento $\lambda$, esta selección se realiza por el método de validación cruzada ordinario y/o generalizado. En este trabajo se realiza el suavizamiento con ambos métodos de validación para finalmente compararlos. También se realizará el suavizamiento para 5, 15 y 25 knots. Para el suavizamiento y regresión spline se utiliza la función smoot.spline() que recibe como parámetros los datos x, y, el número de knots y el método de validación a utilizar. Para el caso de la regresión se asigna a $\lambda$ el valor de cero. Para el suavizamiento se deja libre el parámetro $\lambda$ y se selecciona cv = TRUE para validación cruzada ordinaria y cv = FALSE para validación cruzada generalizada.
 
-En el caso del suavizamiento P-spline se utiliza la función gamm() que permite ajustar un conjunto de datos a un modelo, este modelo se genera usando la función s() que recibe en este caso particular el vector de tiempo t, un idicador de que se utilizarán P-spline bs='ps', el orden de la base, que corresponde a 2 para obtener bases cubicas y el número de knots a utilizar.
+En el caso del suavizamiento P-spline se utiliza la función gamm() que permite ajustar un conjunto de datos a un modelo, este modelo se genera usando la función s() que recibe en este caso particular el vector de tiempo t, un indicador de que se utilizarán P-spline bs='ps', el orden de la base, que corresponde a 2 para obtener bases cúbicas y el número de knots a utilizar.
 
 ```{r}
 for (j in 1:ncol(temp)){
@@ -167,7 +173,7 @@ for (j in 1:ncol(temp)){
 
 ```
 
-Acontinuación se muestran gráficos que comparan los resultados para la regresión, el suavizamiento CV y GCV y suavizamiento P-spline. Para cada uno de ellos se muestran 5 curvas, la curva sin ruido o real, la curva con ruido o simulada y las curvas suavizadas para 5, 15 y 25 knots.
+A Continuación se muestran gráficos que comparan los resultados para la regresión, el suavizamiento CV y GCV y suavizamiento P-spline. Para cada uno de ellos se muestran 5 curvas, la curva sin ruido o real, la curva con ruido o simulada y las curvas suavizadas para 5, 15 y 25 knots.
 
 ```{r}
 # Cambiar j = 1, .., 100 permite visualizar las gráficas para alguna de las 100 versiones de funciones.
