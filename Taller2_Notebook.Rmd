@@ -51,13 +51,14 @@ Applications to Classification" se describe un procedimiento que utiliza una ext
   
 La elección del parámetro de regularización $K$ es un aspecto importante en la práctica dependiendo de la situación en la que se utiliza la semidistancia funcional de Mahalanobis. En el caso de la clasificación, elegimos el valor umbral $K$ a través de validación cruzada leave-one-out.
 
+
 ### The k-nearest neighbor (kNN) procedure
 
 En su verión multivariada, es un método usado para clasificacion. Su contraparte funcional se utiliza para clasificar una curva nueva $X_0$ en alguno de los grupos ya preestablecidos. Para eso, se puede establecer 2 posibles caminos, si los grupos tienen la misma estructura de covarianza o cada uno de los grupos tiene una matriz de covarianza diferente, de esta manera, se aplican los mismos pasos mencinados anteriormente.
 
-### The centroid procedure
-Consiste en asignar cada una de las observaciones nuevas en en algunos de los grupos, esto se hace teniendo en cuenta la media funcional de cada grupo y considerando si la estructura de covanrianza es la misma o diferente para los grupos, se asigna la nueva observación al grupo $i$ cuando la semi-distacia de Mahalanobis entre la observacion nueva y la media funcional de cada grupo sea mínima. Este enfoque es más simple y más rápido con respecto a los demás.
+# The centroid procedure
 
+Consiste en asignar cada una de las observaciones nuevas en en algunos de los grupos, esto se hace teniendo en cuenta la media funcional de cada grupo y considerando si la estructura de covanrianza es la misma o diferente para los grupos, se asigna la nueva observación al grupo $i$ cuando la semi-distacia de Mahalanobis entre la observacion nueva y la media funcional de cada grupo sea mínima. Este enfoque es más simple y más rápido con respecto a los demás.
 #### Tecator dataset
 En la siguiente gráfica se observa las curvas para una muestra de datos.
 
@@ -67,38 +68,258 @@ En la siguiente gráfica se compara los porcentajes de clasificación correcta e
       ![alt text here](box.png)
       
      
-
-3) Considere las curvas espectrométricas usadas en el proceso de producción de azúcar.
+3)  Considere las curvas espectrométricas usadas en el proceso de producción de azúcar.
 
 Se tienen 7 procesos aleatorios relacionados con la respuesta espectro gráfica de muestras de azúcar a determinadas longitudes de onda de excitación.
 
 El conjunto de datos representa la información medida durante la espectrografía para 7 longitudes de onda de excitación. Por cada una de estas se registraron las señales del espectro muestreadas en intervalos de 0.5 nm y se tomaron 268 muestras en momentos diferentes. Es decir que cada proceso consta de 268 realizaciones y cada una de estas muestreadas con intervalos de 0.5 nm.
 
-  a) Seleccione uno de los procesos y con las observaciones muestrales de este proceso
-      1) Encuentre las tres primeras funciones propias estimadas, grafíquelas y presente una explicación de ellas.
-      2) Cuántas funciones propias explican el 90 % de la varianza total del proceso?
-      3) Exprese las tres primeras observaciones muestrales usando la expresión de Karhunen-Loève
-      4) Gráque todas las realizaciones del primer score. Qué observa?
-      5) Presente una matriz con los grácos de dispersión de las realizaciones de los scores que conjuntamente explican el 90 % de la variación del proceso. Explique el comportamiento de los scores
-      6) Exprese la función de covarianza en términos de los valores y funciones propias del operador        de covarianza. Gráfique esta representación.
+a)  Seleccione uno de los procesos y con las observaciones muestrales de este proceso
 
-b) Considere todo los 7 procesos presentados en el conjunto de datos.
-      1) Usando la propuesta de Berrendero, Justel & Svarc (2011):
-          a) Encuentre las estimaciones de las tres primeras funciones propias multivariadas, grafíquelas y presente una explicación de ellas.
-          b) Cuántas funciones propias explican el 90 % de la varianza total del proceso.
-          c) Graque el comportamiento de los valores propios y explique su comportamiento.
-          d) Explique el comportamiento de los scores.
+```{r, echo=FALSE}
+#Librerías
+library(fda)
+library(VGAM)
+library(MASS)
+library(pspline)
+library(mgcv)
+library(R.matlab)
+library(data.table)
+library(deSolve)
+library("fda.usc")
+library(ggplot2)
+require(reshape2)
+library(fields)
+library(akima)
+library(mrfDepth)
+library(tidyverse)
+#DATOS
+sugar <- readMat("data.mat")
+ex_wl = c(230, 240, 255, 290, 305, 325, 340)
+longitud = c(571, 1142, 1713, 2284, 2855, 3426, 3997)
 
-    2) Usando la propuesta de Happ & Greven (2018):
-          a) Encuentre las estimaciones de las tres primeras funciones propias
-          multivariadas, grafíquelas y presente una explicación de ellas.
+sugar_X = sugar$X %>% as.data.table() 
+
+base_571  = sugar_X %>% select(1:571) %>% mutate(ex_wl = 230)
+base_1142 = sugar_X %>% select(572: 1142) %>% mutate(ex_wl = 240)
+colnames(base_1142) = colnames(base_571)
+
+base_1713 = sugar_X %>% select(1143: 1713) %>% mutate(ex_wl = 255)
+colnames(base_1713) = colnames(base_571)
+
+base_2284 = sugar_X %>% select(1714: 2284) %>% mutate(ex_wl = 290)
+colnames(base_2284) = colnames(base_571)
+
+base_2855 = sugar_X %>% select(2285: 2855) %>% mutate(ex_wl = 305)
+colnames(base_2855) = colnames(base_571)
+
+base_3426 = sugar_X %>% select(2856: 3426) %>% mutate(ex_wl = 325)
+colnames(base_3426) = colnames(base_571)
+
+base_3997 = sugar_X %>% select(3427: 3997) %>% mutate(ex_wl = 340)
+colnames(base_3997) = colnames(base_571)
+
+SUGAR = Reduce(bind_rows, list(base_571, base_1142, base_1713, base_2284, base_2855, base_3426, base_3997)) %>% 
+  as.data.table() %>% melt.data.table(., id.vars = c('ex_wl'), variable.name = "wavelengths", value.name = "valor")
+
+SUGAR_db = Reduce(bind_rows, list(base_571, base_1142, base_1713, base_2284, base_2855, base_3426, base_3997))
+
+rm(base_571, base_1142, base_1713, base_2284, base_2855, base_3426, base_3997, sugar_X)
+
+long.onda <- 1:571
+long.onda <- as.numeric(long.onda)
+#Proceso 305 nm
+datos = as.matrix(data.frame(SUGAR_db[ex_wl == 305, ] %>% select(1:571), row.names = NULL) )
+sugar.fdata <- t(datos)
+# Suavizado
+minimo.lambda <- function(base, datos, tiempo,minimo, maximo, aumento)
+{ 
+  vector.lambda <- seq(minimo,maximo,aumento)
+  vector.media.gcv <- rep(NA,length(vector.lambda))
+  for(i in 1:length(vector.lambda))
+  {
+    prueba.fdpar <- fdPar(fdobj = base, Lfdobj = 2, lambda = vector.lambda[i])
+    ajuste.prueba <- smooth.basis(tiempo, datos, prueba.fdpar)
+    vector.media.gcv[i] <- mean(ajuste.prueba$gcv)
+  }
+  names(vector.media.gcv) <- as.character(vector.lambda)
+  return(vector.media.gcv)
+}
+
+base.25 <- create.bspline.basis(rangeval = range(long.onda), nbasis = 25, norder = 4)
+secuencia.lambda.25 <- minimo.lambda(base = base.25, datos = sugar.fdata, tiempo = long.onda,minimo = 0,
+                                     maximo = 200, aumento = 0.1)
+lambda.25 <- as.numeric(names(which.min(secuencia.lambda.25)))
+obs.fdpar.25 <- fdPar(fdobj = base.25,Lfdobj = 2, lambda = lambda.25)
+ajuste <- smooth.basis(long.onda, sugar.fdata, obs.fdpar.25)
+mean <-smooth.basis(long.onda, sugar.fdata[,1], obs.fdpar.25)
+
+
+#ESTIMACIÓN DE LAS FUNCIÓN MEDIA Y EL KERNEL DEL OPERADOR DE COVARIANZA sin región de confianza
+   nbasis = 25
+   meancoef <- matrix(0, nrow = nbasis, ncol = 1)
+   for(i in 1:nbasis){
+      meancoef[i,1] <- mean(ajuste$fd$coefs[i,])
+   }
+   mean$fd$coefs <- meancoef
+   plot(mean)
+#COVARIANZA
+   auxCenter <- smooth.basis(long.onda, sugar.fdata[,1], obs.fdpar.25)
+   Ci <- matrix(0, nrow = 571, ncol = 571)
+  for(i in 1:268){
+    xicoef <- ajuste$fd$coefs[,i]
+    xi_uCoef <- xicoef - meancoef
+    auxCenter$fd$coefs <- xi_uCoef
+    
+    xi_u <- eval.fd(ajuste$argvals, fd(auxCenter$fd$coefs,auxCenter$fd$basis))
+    Ci <- Ci + xi_u%*%t(xi_u)
+  }
+   Ci <- Ci/268
+
+ filled.contour(long.onda,long.onda,Ci, col = heat.colors(20)
+               , main = "Contorno \n Función de Covarianza", cex.main = 1)
+
+
+ lambda <- eigen(Ci)
+ 
+ 
+ eigenf1 <- smooth.basis(long.onda, lambda$vectors[,1], obs.fdpar.25)
+ eigenf2 <- smooth.basis(long.onda, lambda$vectors[,2], obs.fdpar.25)
+ eigenf3 <- smooth.basis(long.onda, lambda$vectors[,3], obs.fdpar.25)
+ eigenf4 <- smooth.basis(long.onda, lambda$vectors[,4], obs.fdpar.25)
+ eigenf5 <- smooth.basis(long.onda, lambda$vectors[,5], obs.fdpar.25)
+ 
+ M <- cbind(eigenf1$fd$coefs, eigenf2$fd$coefs, eigenf3$fd$coefs, eigenf4$fd$coefs,eigenf5$fd$coefs)
+ 
+ Mi <- matrix(0,nrow = 25, ncol = 1)
+ n = 7
+ for(i in 1:n){
+   eigeni <- smooth.basis(long.onda, lambda$vectors[,i], obs.fdpar.25)
+   Mi <- cbind(Mi,eigeni$fd$coefs)
+ }
+ Mi <- Mi[,1:n+1]
+
+ psinvM <- solve(t(M)%*%M)%*%t(M)
+ psinvMi <- solve(t(Mi)%*%Mi)%*%t(Mi)
+ xiOptimbasisCoef <- psinvM%*%mean$fd$coefs[,1] 
+ xiOptimbasisCoefi <- psinvMi%*%mean$fd$coefs[,1] 
+ 
+
+ 
+ D <- lambda$vectors[,1:n]
+ psinvD <- solve(t(D)%*%D)%*%t(D)
+ 
+ Cz <- psinvD%*%eval.fd(mean$argvals, fd(mean$fd$coefs,mean$fd$basis))
+ Cz <- psinvD%*%sugar.fdata[,1]
+ Czi <- psinvMi%*%ajuste$fd$coefs[,1] 
+ mbop <- D%*%Cz
+ 
+ xieigeBi <- matrix(0, nrow = 571, ncol = 1)
+ zi <- matrix(0, nrow = n, ncol = 268)
+ for(i in 1:268){
+   ci <- psinvD%*%sugar.fdata[,i]
+   zi[,i] = ci-Cz
+   xieigeBi <- cbind(xieigeBi,D%*%ci) 
+ }
+ xieigeBi <- xieigeBi[, 2:269]
+ MES<-function(real,sim, n){
+  dy <- real - sim
+  y <- (t(dy)%*%dy)/n
+ }
+ 
+plot(xieigeBi[,1], ylim=c(0,200))
+for(i in 2:268){
+  lines(xieigeBi[,i])
+}
+plot(zi[3,])
+```
+
+1)  Encuentre las tres primeras funciones propias estimadas, grafíquelas y presente una explicación de ellas.
+    2)  Cuántas funciones propias explican el 90 % de la varianza total del proceso?
+    3)  Exprese las tres primeras observaciones muestrales usando la expresión de Karhunen-Loève
+    4)  Gráque todas las realizaciones del primer score. Qué observa?
+    5)  Presente una matriz con los grácos de dispersión de las realizaciones de los scores que conjuntamente explican el 90 % de la variación del proceso. Explique el comportamiento de los scores
+    6)  Exprese la función de covarianza en términos de los valores y funciones propias del operador de covarianza. Gráfique esta representación.
+
+
+b)  Considere todo los 7 procesos presentados en el conjunto de datos.
+    1)  Usando la propuesta de Berrendero, Justel & Svarc (2011):
+        a)  Encuentre las estimaciones de las tres primeras funciones propias multivariadas, grafíquelas y presente una explicación de ellas.
+        b)  Cuántas funciones propias explican el 90 % de la varianza total del proceso.
+        c)  Graque el comportamiento de los valores propios y explique su comportamiento.
+        d)  Explique el comportamiento de los scores.
+    2)  Usando la propuesta de Happ & Greven (2018):
+        a)  Encuentre las estimaciones de las tres primeras funciones propias multivariadas, grafíquelas y presente una explicación de ellas.
+
+```{r}
+library(R.matlab)
+library(fda.usc)
+library(fdaoutlier)
+library(fda)
+library(funData)
+library(MFPCA)
+numMuestras <- 268
+numEmision <- 571
+
+##setwd("D:/EspecializaciÃ³n en EstadÃ­stica/Primer Semestre 2022/AnÃ¡lisis de Datos Funcionales/Talleres/Taller 1.2 EstadÃ­stica Descriptiva/")
+
+datos <- readMat("C:/Users/KMGARCAS/Downloads/sugar_Process//data.mat")
+
+intensidad <- data.frame(datos$X)
+emision <- datos$EmAx
+longExc <- datos$ExAx
+
+listaMatricesDatos <- list()
+listaMatricesFunciones <- list()
+
+
+
+sec_der = int2Lfd(2)
+base = create.bspline.basis(c(1,numEmision),nbasis=60)
+dat_fdpar= fdPar(base,sec_der,lambda=6)
+#class(datfd1$fd)
+datfd1 = smooth.basis (argvals=1:numEmision,y=t(listaMatricesDatos[[1]]),fdParobj=dat_fdpar)
+datfd2 = smooth.basis (argvals=1:numEmision,y=t(listaMatricesDatos[[2]]),fdParobj=dat_fdpar)
+datfd3 = smooth.basis (argvals=1:numEmision,y=t(listaMatricesDatos[[3]]),fdParobj=dat_fdpar)
+datfd4 = smooth.basis (argvals=1:numEmision,y=t(listaMatricesDatos[[4]]),fdParobj=dat_fdpar)
+datfd5 = smooth.basis (argvals=1:numEmision,y=t(listaMatricesDatos[[5]]),fdParobj=dat_fdpar)
+datfd6 = smooth.basis (argvals=1:numEmision,y=t(listaMatricesDatos[[6]]),fdParobj=dat_fdpar)
+datfd7 = smooth.basis (argvals=1:numEmision,y=t(listaMatricesDatos[[7]]),fdParobj=dat_fdpar)
+
+plot(datfd$fd[1],type="1")
+
+funSmoothData = list()
+funSmoothData [[1]]= fd2funData(fdobj=datfd1$fd,argvals=1:numEmision)
+funSmoothData [[2]]= fd2funData(fdobj=datfd2$fd,argvals=1:numEmision)
+funSmoothData [[3]]= fd2funData(fdobj=datfd3$fd,argvals=1:numEmision)
+funSmoothData [[4]]= fd2funData(fdobj=datfd4$fd,argvals=1:numEmision)
+funSmoothData [[5]]= fd2funData(fdobj=datfd5$fd,argvals=1:numEmision)
+funSmoothData [[6]]= fd2funData(fdobj=datfd6$fd,argvals=1:numEmision)
+funSmoothData [[7]]= fd2funData(fdobj=datfd7$fd,argvals=1:numEmision)
+
+
+multiFunData(funSmoothData) -> mfd.fundat
+
+nuevafuncion = MFPCA(mfd.fundat,2,fit = T,uniExpansions = list(list(type= "uFPCA"),
+                                                               list(type= "uFPCA"),
+                                                               list(type= "uFPCA"),
+                                                               list(type= "uFPCA"),
+                                                               list(type= "uFPCA"),
+                                                               list(type= "uFPCA"),
+                                                               list(type= "uFPCA")))
+
+
+##Punto Habb 1
+str(nuevafuncion$functions)
+x11()
+plot(nuevafuncion$functions)
+```
 
           b) Cuántas funciones propias explican el 90 % de la varianza total del proceso.
           c) Graque el comportamiento de los valores propios y explique su comportaminto.
           d) Explique el comportamiento de los scores
 
       3) Explique las diferencias existentes entre las propuestas de Berrendero, $Justel & Svarc (2011) y Happ, C., & Greven, S. (2018)$.
-
 
 ```{r echo=FALSE, message=FALSE, warning=FALSE, include=FALSE, paged.print=FALSE}
 library(fda)
@@ -159,6 +380,7 @@ long.onda <- as.numeric(long.onda)
 ```
 
 Para que el suavizamiento de todo el proceso multivariado se realice bajo el mismo parámetro $\lambda$ se define la función minimo.lambda() que sirve para determinar el valor de $\lambda$ que minimiza el promedio del criterio de validación cruzada generalizada entre todas las curvas de la muestra para cada proceso.
+
 ```{r, echo=FALSE}
 minimo.lambda <- function(base, datos, tiempo,minimo, maximo, aumento)
 { 
@@ -174,8 +396,6 @@ minimo.lambda <- function(base, datos, tiempo,minimo, maximo, aumento)
   return(vector.media.gcv)
 }
 ```
-
-
 
 ```{r, echo=FALSE}
 vec_class = SUGAR_db %>% select(ex_wl)  %>% distinct() %>% pull()
@@ -226,8 +446,8 @@ Una vez tenemos todas la curvas suavizadas para cada uno de los 7 procesos, apli
 
 Para cada tiempo $t$ obtenemos una matriz $X(t)$ de dimension $268 \times 7$, procedemos calculando la matriz $\Sigma (t) = X'(t) X(t)$, y finalmente, a cada una de estas $571$ le sacamos los valores y vectores propios.
 
-
 ```{r, echo=FALSE}
+
 out.valores = NULL
 out.vectores = NULL
 out.Z = NULL
@@ -258,7 +478,9 @@ for (tiempo in 1:571) {
 ```
 
 
+
 ```{r, echo=FALSE}
+
 ## Plot to see all the curvs from all the process
 names(out.vectores) = c('V1','V2',vec_class )
 out.vectores.plot = out.vectores %>%  as.data.table() %>% 
@@ -294,4 +516,3 @@ ggplot(out.Z_plot, aes(x  = readr::parse_number(as.character(variable)), y = val
   xlab("Longitudes de Onda (t)") +
   labs(size = 20) 
 ```
-

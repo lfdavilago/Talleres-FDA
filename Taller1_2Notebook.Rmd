@@ -7,6 +7,12 @@ output:
   pdf_document: default
 ---
 
+#### Presentado por:
+
+Juan Sebastian Oviedo Mozo
+
+Luis Felipe Dávila Goyeneche
+
 Se tienen 7 procesos aleatorios relacionados con la respuesta espectro gráfica de muestras de azúcar a determinadas longitudes de onda de excitación.
 
 El conjunto de datos representa la información medida durante la espectrografía para 7 longitudes de onda de excitación. Por cada una de estas se registraron las señales del espectro muestreadas en intervalos de 0.5 nm y se tomaron 268 muestras en momentos diferentes. Es decir que cada proceso consta de 268 realizaciones y cada una de estas muestreadas con intervalos de 0.5 nm.
@@ -279,7 +285,9 @@ out <- c(outliers.baja, outliers.baja2)
 sprintf("Outliers index: %d %d %d %d %d %d, Median Curve index: %d", out[1],out[2],out[3],out[4],out[5],out[6],med)
 ```
 
-En el siguiente gráfico se muestra la curva mediana en color negro, los outlier obtenidos sobre las curvas suavizadas en color rojo, y los outlier obtenidos bajo la primera derivada en color amarillo. #### Outliers
+En el siguiente gráfico se muestra la curva mediana en color negro, los outlier obtenidos sobre las curvas suavizadas en color rojo, y los outlier obtenidos bajo la primera derivada en color amarillo.
+
+#### Outliers
 
 ```{r echo=FALSE}
 curvaMediana <- smooth.basis(long.onda, sugar.fdata[,139],obs.fdpar.25)
@@ -399,14 +407,6 @@ media.boostrap.bajo <- fdata.bootstrap.mean(curvas.baja.usc, statistic = func.me
                                             , draw = T, draw.control = list("col" =  c("gold","green","darkgreen"))
                                             ,title = "Función Media ",smo = 0.01)
 
-plot(media.boostrap.bajo$statistic
-     , lty = 1, col = "darkorange", ylim = c(min(media.boostrap.bajo$resample)
-                                             ,max(media.boostrap.bajo$resample)), main = "Funciones Media ", xlab = "Longitud de Onda (t)"
-     , ylab = expression(hat(x)(t)), cex.lab = 0.8, cex.main = 1)
-
-legend("topleft", legend = c("F. Media", "F. Media - Alto", "Región de Confianza - Bajo"
-                             ,"Región de Confianza - Alto"), cex = 0.75, lwd = 2
-       , col = c("chartreuse4","gold","cyan3", "darkorange"), inset = c(0.01,0.05), bty = "n")
 ```
 
 #### Función media recortada al 10%
@@ -551,9 +551,6 @@ var.boostrap.bajo <- fdata.bootstrap.var(curvas.baja.usc, statistic = func.var, 
 var.baja <- var.fd(ajuste.baja.sin.outl$fd)
 eval.var.baja <- eval.bifd(long.onda,long.onda,var.baja)
 
-drape.plot(long.onda,long.onda,eval.var.baja, expand = 0.5, col = heat.colors(20)
-           , main = "Función Covarianza", horizontal = F, ticktype = "detailed"
-           , xlab = "t" , ylab = "t", zlab = "Covarianza")
 filled.contour(long.onda,long.onda,eval.var.baja, col = heat.colors(20)
                , main = "Contorno \n Función de Covarianza", cex.main = 1)
 ```
@@ -720,7 +717,7 @@ cuan.95.bajo <- fdata.bootstrap.cuan(curvas.baja.usc, statistic = max.region.cen
                                      ,prob.cuan = 0.95)
 ```
 
-```{r echo=FALSE}
+```{r eval=FALSE, include=FALSE}
 cuan.boostrap.bajo.90 <-  fdata.bootstrap.cuan(curvas.baja.usc, statistic = func.mean
                                                , alpha = 0.05, nb = 200, draw = F, prob.cuan = 0.90, smo = 0.01)
 cuan.boostrap.bajo.95 <-  fdata.bootstrap.cuan(curvas.baja.usc, statistic = func.mean
