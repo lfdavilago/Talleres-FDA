@@ -58,7 +58,75 @@ b) Considere todo los 7 procesos presentados en el conjunto de datos.
           d) Explique el comportamiento de los scores.
 
       2) Usando la propuesta de Happ & Greven (2018):
-          a) Encuentre las estimaciones de las tres primeras funciones propias multivariadas, grafíquelas y presente una explicación de ellas.
+          a) Encuentre las estimaciones de las tres primeras funciones propias
+          multivariadas, grafíquelas y presente una explicación de ellas.
+          
+```{r}
+
+
+library(R.matlab)
+library(fda.usc)
+library(fdaoutlier)
+library(fda)
+library(funData)
+library(MFPCA)
+numMuestras <- 268
+numEmision <- 571
+
+##setwd("D:/EspecializaciÃ³n en EstadÃ­stica/Primer Semestre 2022/AnÃ¡lisis de Datos Funcionales/Talleres/Taller 1.2 EstadÃ­stica Descriptiva/")
+
+datos <- readMat("C:/Users/KMGARCAS/Downloads/sugar_Process//data.mat")
+
+intensidad <- data.frame(datos$X)
+emision <- datos$EmAx
+longExc <- datos$ExAx
+
+listaMatricesDatos <- list()
+listaMatricesFunciones <- list()
+
+
+
+sec_der = int2Lfd(2)
+base = create.bspline.basis(c(1,numEmision),nbasis=60)
+dat_fdpar= fdPar(base,sec_der,lambda=6)
+class(datfd1$fd)
+datfd1 = smooth.basis (argvals=1:numEmision,y=t(listaMatricesDatos[[1]]),fdParobj=dat_fdpar)
+datfd2 = smooth.basis (argvals=1:numEmision,y=t(listaMatricesDatos[[2]]),fdParobj=dat_fdpar)
+datfd3 = smooth.basis (argvals=1:numEmision,y=t(listaMatricesDatos[[3]]),fdParobj=dat_fdpar)
+datfd4 = smooth.basis (argvals=1:numEmision,y=t(listaMatricesDatos[[4]]),fdParobj=dat_fdpar)
+datfd5 = smooth.basis (argvals=1:numEmision,y=t(listaMatricesDatos[[5]]),fdParobj=dat_fdpar)
+datfd6 = smooth.basis (argvals=1:numEmision,y=t(listaMatricesDatos[[6]]),fdParobj=dat_fdpar)
+datfd7 = smooth.basis (argvals=1:numEmision,y=t(listaMatricesDatos[[7]]),fdParobj=dat_fdpar)
+
+plot(datfd$fd[1],type="1")
+
+funSmoothData = list()
+funSmoothData [[1]]= fd2funData(fdobj=datfd1$fd,argvals=1:numEmision)
+funSmoothData [[2]]= fd2funData(fdobj=datfd2$fd,argvals=1:numEmision)
+funSmoothData [[3]]= fd2funData(fdobj=datfd3$fd,argvals=1:numEmision)
+funSmoothData [[4]]= fd2funData(fdobj=datfd4$fd,argvals=1:numEmision)
+funSmoothData [[5]]= fd2funData(fdobj=datfd5$fd,argvals=1:numEmision)
+funSmoothData [[6]]= fd2funData(fdobj=datfd6$fd,argvals=1:numEmision)
+funSmoothData [[7]]= fd2funData(fdobj=datfd7$fd,argvals=1:numEmision)
+
+
+multiFunData(funSmoothData) -> mfd.fundat
+
+nuevafuncion = MFPCA(mfd.fundat,2,fit = T,uniExpansions = list(list(type= "uFPCA"),
+                                                               list(type= "uFPCA"),
+                                                               list(type= "uFPCA"),
+                                                               list(type= "uFPCA"),
+                                                               list(type= "uFPCA"),
+                                                               list(type= "uFPCA"),
+                                                               list(type= "uFPCA")))
+
+
+##Punto Habb 1
+str(nuevafuncion$functions)
+x11()
+plot(nuevafuncion$functions)
+```
+          
           b) Cuántas funciones propias explican el 90 % de la varianza total del proceso.
           c) Graque el comportamiento de los valores propios y explique su comportaminto.
           d) Explique el comportamiento de los scores
