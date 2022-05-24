@@ -1,0 +1,263 @@
+---
+title: 'Taller 2.1: Taller FACP'
+output:
+  html_document:
+    df_print: paged
+  html_notebook: default
+  pdf_document: default
+---
+1) Con relación a los operadores lineales y al espacio de las funciones cuadrado integrables:
+  a) Explique por qué el espacio de las funciones continuas no es un espacio adecuado para representar las observaciones funcionales.
+  Según el libro, se pueden definir espacios adecuados para cada conjunto de datos, por ejemplo: En el caso más simple, los números escalares pertenecen al espacio definido en la linea recta o números reales; en estadística multivariada, los datos son vectores que pertenecen a $R^d$ donde $d$ es la dimensión del vector. Para el caso de datos funcionales, se considera un espacio de dimensión infinita aunque las funciones sean observadas en tiempos discretos. El primer paso consiste en tomar las observaciones en los puntos discretos y convertirlos en objetos funcionales usando bases de expansión; por lo tanto, si consideramos una base de funciones trigonométricas obtenemos funciones continuas definidas en un intervalo $[a, b]$, es decir que se heredan las propiedades de las base. Teniendo en cuenta lo anterior y si adicionalmete agregamos la restricción de que las funciones deben ser diferenciables $n$ veces, encontramos que el espacio más apropiado para definir estás funciones es el espacio $L^2$, el espacio de funciones ciadrado integrables.
+  
+  b) Explique por que la igualdad en el espacio $L^2$ es en el sentido de casi siempre.
+
+  c) Qué propiedades tiene el operador de covarianza?
+  Según el teorema 11.2.2 del libro $Kokoszka, P., & Reimherr, M. (2017)$, las propiedades de un operador de covariaza $C$ de un conjunto de funciones aleatorias cuadrado integrables son:
+      1) $C$ es simétrico.
+      2) $C$ es definido no negativo.
+      3) La suma de los valores propios de $C$ es finita.
+  
+  d) De acuerdo a las propiedades que presenta el operador de covarianza, presente una descomposición adecuada de este operador.
+  e) Sea $Ψ$ un operador integral con el kernel gaussiano $ψ(t, s) = α exp(−(t2 + s2)/2)$.
+
+      1) Para que valores de $/alpha$ $Ψ$ es un operador de Hilbert-Schmidt.
+      2) Muestre que kΨkL ≤k Ψ kHS.
+      3) Encuentre la norma del kernel.
+      4) Halle la descomposición espectral del operador Ψ.
+  f) Explique qué es una base óptima para representar funciones aleatorias y presente una.
+  g) Explique cómo se encuentran las funciones propias y los valores propias del operador de covarianza.
+  h) Explique cómo se encuentran las estimaciones de las funciones propias y de los valores propios del operador de covarianza.
+
+
+2) Estudie el artículo de Galeano, Joseph & Lillo (2015) e implemente los procedimientos de clasicación kNN y
+centroide, usando el conjunto de datos Tecator y la función de Mahalanobis. Explique los resultados obtenidos.
+
+En el articulo $The Mahalanobis Distance for Functional Data with
+Applications to Classification$ se describe un procedimiento que utiliza una extensión de la función de distancia de Mahalanobis para datos multivariados a datos funcionales.
+
+3) Considere las curvas espectrométricas usadas en el proceso de producción de azúcar.
+
+Se tienen 7 procesos aleatorios relacionados con la respuesta espectro gráfica de muestras de azúcar a determinadas longitudes de onda de excitación.
+
+El conjunto de datos representa la información medida durante la espectrografía para 7 longitudes de onda de excitación. Por cada una de estas se registraron las señales del espectro muestreadas en intervalos de 0.5 nm y se tomaron 268 muestras en momentos diferentes. Es decir que cada proceso consta de 268 realizaciones y cada una de estas muestreadas con intervalos de 0.5 nm.
+
+  a) Seleccione uno de los procesos y con las observaciones muestrales de este proceso
+      1) Encuentre las tres primeras funciones propias estimadas, grafíquelas y presente una explicación de ellas.
+      2) Cuántas funciones propias explican el 90 % de la varianza total del proceso?
+      3) Exprese las tres primeras observaciones muestrales usando la expresión de Karhunen-Loève
+      4) Gráque todas las realizaciones del primer score. Qué observa?
+      5) Presente una matriz con los grácos de dispersión de las realizaciones de los scores que conjuntamente explican el 90 % de la variación del proceso. Explique el comportamiento de los scores
+      6) Exprese la función de covarianza en términos de los valores y funciones propias del operador        de covarianza. Gráfique esta representación.
+
+b) Considere todo los 7 procesos presentados en el conjunto de datos.
+      1) Usando la propuesta de Berrendero, Justel & Svarc (2011):
+          a) Encuentre las estimaciones de las tres primeras funciones propias multivariadas, grafíquelas y presente una explicación de ellas.
+          b) Cuántas funciones propias explican el 90 % de la varianza total del proceso.
+          c) Graque el comportamiento de los valores propios y explique su comportamiento.
+          d) Explique el comportamiento de los scores.
+
+      2) Usando la propuesta de Happ & Greven (2018):
+          a) Encuentre las estimaciones de las tres primeras funciones propias multivariadas, grafíquelas y presente una explicación de ellas.
+          b) Cuántas funciones propias explican el 90 % de la varianza total del proceso.
+          c) Graque el comportamiento de los valores propios y explique su comportaminto.
+          d) Explique el comportamiento de los scores
+
+      3) Explique las diferencias existentes entre las propuestas de Berrendero, $Justel & Svarc (2011) y Happ, C., & Greven, S. (2018)$.
+
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, include=FALSE, paged.print=FALSE}
+library(fda)
+library(VGAM)
+library(MASS)
+library(pspline)
+library(mgcv)
+library(R.matlab)
+library(data.table)
+library(deSolve)
+library("fda.usc")
+library(ggplot2)
+require(reshape2)
+library(fields)
+library(akima)
+library(mrfDepth)
+library(tidyverse)
+```
+
+```{r}
+sugar <- readMat("data.mat")
+```
+
+```{r echo=FALSE}
+ex_wl = c(230, 240, 255, 290, 305, 325, 340)
+longitud = c(571, 1142, 1713, 2284, 2855, 3426, 3997)
+
+sugar_X = sugar$X %>% as.data.table() 
+
+base_571  = sugar_X %>% select(1:571) %>% mutate(ex_wl = 230)
+base_1142 = sugar_X %>% select(572: 1142) %>% mutate(ex_wl = 240)
+colnames(base_1142) = colnames(base_571)
+
+base_1713 = sugar_X %>% select(1143: 1713) %>% mutate(ex_wl = 255)
+colnames(base_1713) = colnames(base_571)
+
+base_2284 = sugar_X %>% select(1714: 2284) %>% mutate(ex_wl = 290)
+colnames(base_2284) = colnames(base_571)
+
+base_2855 = sugar_X %>% select(2285: 2855) %>% mutate(ex_wl = 305)
+colnames(base_2855) = colnames(base_571)
+
+base_3426 = sugar_X %>% select(2856: 3426) %>% mutate(ex_wl = 325)
+colnames(base_3426) = colnames(base_571)
+
+base_3997 = sugar_X %>% select(3427: 3997) %>% mutate(ex_wl = 340)
+colnames(base_3997) = colnames(base_571)
+
+SUGAR = Reduce(bind_rows, list(base_571, base_1142, base_1713, base_2284, base_2855, base_3426, base_3997)) %>% 
+  as.data.table() %>% melt.data.table(., id.vars = c('ex_wl'), variable.name = "wavelengths", value.name = "valor")
+
+SUGAR_db = Reduce(bind_rows, list(base_571, base_1142, base_1713, base_2284, base_2855, base_3426, base_3997))
+
+rm(base_571, base_1142, base_1713, base_2284, base_2855, base_3426, base_3997, sugar_X)
+
+long.onda <- 1:571
+long.onda <- as.numeric(long.onda)
+```
+
+Para que el suavizamiento de todo el proceso multivariado se realice bajo el mismo parámetro $\lambda$ se define la función minimo.lambda() que sirve para determinar el valor de $\lambda$ que minimiza el promedio del criterio de validación cruzada generalizada entre todas las curvas de la muestra para cada proceso.
+```{r}
+minimo.lambda <- function(base, datos, tiempo,minimo, maximo, aumento)
+{ 
+  vector.lambda <- seq(minimo,maximo,aumento)
+  vector.media.gcv <- rep(NA,length(vector.lambda))
+  for(i in 1:length(vector.lambda))
+  {
+    prueba.fdpar <- fdPar(fdobj = base, Lfdobj = 2, lambda = vector.lambda[i])
+    ajuste.prueba <- smooth.basis(tiempo, datos, prueba.fdpar)
+    vector.media.gcv[i] <- mean(ajuste.prueba$gcv)
+  }
+  names(vector.media.gcv) <- as.character(vector.lambda)
+  return(vector.media.gcv)
+}
+```
+
+
+
+```{r, echo=FALSE}
+vec_class = SUGAR_db %>% select(ex_wl)  %>% distinct() %>% pull()
+base.25 <- create.bspline.basis(rangeval = range(long.onda), nbasis = 25, norder = 4)
+out = NULL
+ for (cl in vec_class){
+   # Suavizar cada uno de los grupos
+ datos = as.matrix(data.frame(SUGAR_db[ex_wl == cl] %>% select(1:571), row.names = NULL) )
+ sugar.fdata <- t(datos)
+ secuencia.lambda.25 <- minimo.lambda(base = base.25, datos = sugar.fdata, tiempo = long.onda,
+                                      minimo = 0,maximo = 200, aumento = 0.1)
+
+ lambda.25 <- as.numeric(names(which.min(secuencia.lambda.25)))
+ 
+ sprintf("Lambda 25 = %f", lambda.25)
+ sprintf("clase = %f", cl)
+ obs.fdpar.25 <- fdPar(fdobj = base.25,Lfdobj = 2, lambda = lambda.25)
+
+ ajuste.25.fd <- smooth.basis(long.onda, sugar.fdata,obs.fdpar.25)$fd
+ 
+ ajuste.25 = eval.fd(long.onda,ajuste.25.fd)  %>% t() %>% as.data.table() 
+ out = bind_rows(out, ajuste.25)
+ rm(ajuste.25)
+ }
+
+out1 = out  %>%  as.data.table()%>% .[,`:=`(clase = rep(vec_class, each = 268), sample = rep(1:268, 7)),] %>% melt.data.table(., id.vars = c('clase', 'sample')) %>% .[,.(clase, sample, t = readr::parse_number(as.character(variable)), smoothed= value ),]
+
+```
+
+```{r, echo=FALSE}
+library(viridis)
+library(hrbrthemes)
+
+## Plot to see all the curvs from all the process
+
+ggplot(out1, aes(x = t, y = smoothed)) + geom_line(size = 0.1) + 
+  facet_wrap(~ clase, scales = "free_y", nrow = 4) +
+  scale_color_viridis(discrete = TRUE) +
+  ggtitle(expression("Datos Suavizados (Nivel de excitación)")) +
+
+  guides(fill = "none") +
+  ylab("x(t)") +
+  xlab("Longitudes de Onda (t)") +
+  labs(size = 20) 
+```
+
+Una vez tenemos todas la curvas suavizadas para cada uno de los 7 procesos, aplicamos la metodologia de $Berrendero$ así;
+
+Para cada tiempo $t$ obtenemos una matriz $X(t)$ de dimension $268 \times 7$, procedemos calculando la matriz $\Sigma (t) = X'(t) X(t)$, y finalmente, a cada una de estas $571$ le sacamos los valores y vectores propios.
+
+
+```{r}
+out.valores = NULL
+out.vectores = NULL
+out.Z = NULL
+for (tiempo in 1:571) {
+  base = out1 %>% as.data.table() %>% 
+    .[t == tiempo,,] %>% 
+     .[,`:=`(mean = mean(smoothed)),.(clase, t)] %>%
+    .[,centered := smoothed- mean ,] %>% 
+    dcast.data.table(., sample + t ~ clase, value.var = "centered") %>% 
+    .[,3:9,] %>% as.matrix()
+  
+  X = t(base) %*% base
+  e.values =t(c(tiempo , eigen(X)$values)) %>% as.data.frame()
+  ev.values = cbind(rep(tiempo,7),seq(1:7) ,t(eigen(X)$vectors)) %>% as.data.frame()
+  
+  Z = t(eigen(X)$vectors[1,]) %*% t(base) %>% as.data.frame()
+  names(Z) = paste0("v",1:268) 
+  out.Z =  bind_rows(out.Z, Z)
+  
+  out.valores = bind_rows(out.valores, e.values)
+  out.vectores = bind_rows(out.vectores, ev.values)
+  
+  print(tiempo)
+  rm(base, X, e.values, ev.values, Z)
+  
+ 
+}
+```
+
+
+```{r}
+## Plot to see all the curvs from all the process
+names(out.vectores) = c('V1','V2',vec_class )
+out.vectores.plot = out.vectores %>%  as.data.table() %>% 
+  .[V2 == 1,] %>% 
+  melt.data.table(., id.vars =c('V1', 'V2')  )
+  
+ggplot(out.vectores.plot, aes(x  = V1, y = value)) + 
+  geom_line(size = 0.1, aes( color = variable) )+ 
+ # facet_wrap(~ variable, scales = "free_y", nrow = 4) +
+  scale_color_viridis(discrete = TRUE) +
+  ggtitle(expression("PC1 coeff")) +
+
+  guides(fill = "none") +
+  ylab("x(t)") +
+  xlab("Longitudes de Onda (t)") +
+  labs(size = 20) 
+```
+
+Ahora procedemos a calcular los nuevos componentes $Z(t)$ y la proyección de los indivusuos sobre el nuevo espacio
+
+```{r}
+## Plot to see all the curvs from all the process
+out.Z_plot = out.Z %>% t() %>%  as.data.table() %>% 
+  .[,sample := 1:268,] %>% 
+  melt.data.table(., id.vars =c('sample')  )
+  
+ggplot(out.Z_plot, aes(x  = readr::parse_number(as.character(variable)), y = value)) + geom_line(size = 0.1) + 
+  scale_color_viridis(discrete = TRUE) +
+  ggtitle(expression("Todos los individuos en el primer CP")) +
+
+  guides(fill = "none") +
+  ylab("x(t)") +
+  xlab("Longitudes de Onda (t)") +
+  labs(size = 20) 
+```
+
